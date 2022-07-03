@@ -1,2 +1,2 @@
 # rps-league
-This is a simple project we made in hack-a-TON event
+This is a simple project we made in Hack-a-TON event
