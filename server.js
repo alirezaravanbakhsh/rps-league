@@ -20,7 +20,7 @@ const tonweb = new TonWeb(new TonWeb.HttpProvider(providerUrl, {apiKey}))
 const app = express()
 app.use('/', express.static(path.resolve(__dirname, './public')))
 const myServer = app.listen(3000, function() {
-  console.log('Listening on http://localhost:3000')
+  console.log('Listening on http://0.0.0.0:3000')
 })
 
 const wsServer = new WebSocket.Server({
