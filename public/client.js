@@ -25,7 +25,7 @@ hideAllPanes()
 setupWebSocket()
 
 function setupWebSocket() {
-  const url = "ws://localhost:3000/myWebsocket"
+  const url = "ws://188.34.159.18:3000/myWebsocket"
   const wsServer = new WebSocket(url)
   state.wsServer = wsServer
 

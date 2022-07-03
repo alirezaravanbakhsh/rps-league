@@ -28,13 +28,16 @@ const wsServer = new WebSocket.Server({
 })
 
 myServer.on('upgrade', async function upgrade(request, socket, head) {
+  console.log('on upgrade.')
   wsServer.handleUpgrade(request, socket, head, function(ws) {
     wsServer.emit('connection', ws, request)
   })
 })
 
 wsServer.on('connection', function(ws) {
+  console.log('on connection.')
   ws.on('message', function(m) {
+    console.log('message: ', m.toString())
     const msg = JSON.parse(m.toString())
     if (msg.command === 'join') {
       queue(ws, msg)
@@ -57,6 +60,7 @@ wsServer.on('connection', function(ws) {
     //   checkPick(ws, msg)
   })
   ws.on('close', function() {
+    console.log('on close.')
     leaveRoom(ws)
   })
 })
@@ -305,6 +309,7 @@ function initChannel(ws, msg) {
 }
 
 async function closeChannel(ws, msg) {
+  console.log('closeChannel is called.')
   const signatureCloseB = deserializeSignature(msg.signatureCloseB)
   const valid = await ws.channelA.verifyClose(ws.channelState, signatureCloseB)
   if (!valid) {
