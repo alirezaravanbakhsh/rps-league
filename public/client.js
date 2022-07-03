@@ -3,6 +3,7 @@ function findOne(q) {
 }
 
 function hide(el) {
+  console.log(el.id, ' to be hide.')
   el.style.display = 'none'
 }
 
@@ -17,6 +18,7 @@ function hideAll() {
 
 function show(el) {
   hideAll()
+  console.log(el.id, ' to be shown.')
   el.style.display = ''
   const input = el.querySelector('input')
   if (input != null) {
@@ -245,6 +247,7 @@ async function checkInitialized() {
         break
       }
     } catch (e) {
+      console.log('exception in checkInitialized - ', e)
     }
     await timeout(1000)
   }
@@ -254,7 +257,7 @@ async function checkInitialized() {
 }
 
 function setupWebSocket() {
-  const url = "ws://localhost:3000/myWebsocket"
+  const url = "ws://188.34.159.18:3000/myWebsocket"
   const wsServer = new WebSocket(url)
   state.wsServer = wsServer
 
