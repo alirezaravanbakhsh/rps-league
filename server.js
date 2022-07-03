@@ -38,6 +38,8 @@ wsServer.on('connection', function(ws) {
     const msg = JSON.parse(m.toString())
     if (msg.command === 'join') {
       queue(ws, msg)
+    } else if (msg.command === 'pick') {
+      checkPick(ws, msg)
     } else {
       console.log('unknown message: %s', msg)
     }
@@ -53,8 +55,6 @@ wsServer.on('connection', function(ws) {
     //   closeChannel(ws, msg)
     // } else if (msg.command === 'leave') {
     //   leaveRoom(ws)
-    // } else if (msg.command === 'pick') {
-    //   checkPick(ws, msg)
   })
   ws.on('close', function() {
     leaveRoom(ws)
@@ -110,40 +110,105 @@ function joinPlayers() {
 }
 
 async function checkPick(ws, msg) {
-  const nextChannelState = deserializeChannelState(msg.nextChannelState)
-  const signatureB = deserializeSignature(msg.signatureB)
-  if (nextChannelState.balanceA.toString() != ws.channelState.balanceA.toString()) {
-    return console.log('balanceA mismatch')
-  }
-  if (nextChannelState.balanceB.toString() != ws.channelState.balanceB.sub(toNano('0.1')).toString()) {
-    return console.log('balanceB not subtracted by 0.1')
-  }
-  if (nextChannelState.seqnoA.toString() != ws.channelState.seqnoA.toString()) {
-    return console.log('seqnoA mismatch')
-  }
-  if (nextChannelState.seqnoB.toString() != ws.channelState.seqnoB.add(new BN('1')).toString()) {
-    return console.log('seqnoB not added by 1')
-  }
-  if (!(await ws.channelA.verifyState(nextChannelState, signatureB))) {
-    return console.log('signatureB is invalid')
-  }
-  ws.channelState = nextChannelState
-
+  // const nextChannelState = deserializeChannelState(msg.nextChannelState)
+  const signature = deserialize(msg.signature)
+  // if (nextChannelState.balanceA.toString() != ws.channelState.balanceA.toString()) {
+  //   return console.log('balanceA mismatch')
+  // }
+  // if (nextChannelState.balanceB.toString() != ws.channelState.balanceB.sub(toNano('0.1')).toString()) {
+  //   return console.log('balanceB not subtracted by 0.1')
+  // }
+  // if (nextChannelState.seqnoA.toString() != ws.channelState.seqnoA.toString()) {
+  //   return console.log('seqnoA mismatch')
+  // }
+  // if (nextChannelState.seqnoB.toString() != ws.channelState.seqnoB.add(new BN('1')).toString()) {
+  //   return console.log('seqnoB not added by 1')
+  // }
+  // if (!(await ws.channelA.verifyState(nextChannelState, signatureB))) {
+  //   return console.log('signatureB is invalid')
+  // }
+  // ws.channelState = nextChannelState
   const pick = msg.pick
   const roomId = ws.roomId
   const room = state.roomDict[roomId]
+  let isA
   if (ws === room.playerA) {
     room.pickA = pick
-  } else if (ws === room.playerB) {
+    isA = true
+    room.signatureB = signature
+  } else {
     room.pickB = pick
+    isA = false
+    room.signatureA = signature
   }
   const newMsg = JSON.stringify({
     event: 'picked',
-    addressB: ws.addressB.toString(true, true, true)
+    isA: isA
   })
   room.playerA.send(newMsg)
   room.playerB.send(newMsg)
   checkRound(room)
+}
+
+async function checkRound(room) {
+  const a = room.pickA
+  const b = room.pickB
+  if (a != null && b != null) {
+    await timeout(1000)
+    const result = rpsCheckRule(a, b)
+    if (result === 0) {
+      // giveBack(room.playerA)
+      // giveBack(room.playerB)
+      // const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
+      // const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
+      room.playerA.send(JSON.stringify(
+        { event: 'draw'
+        , pick: room.pickB
+        // , channelState: serializeChannelState(room.playerA.channelState)
+        // , signatureA: serializeSignature(signaturePlayerA)
+        }
+      ))
+      room.playerB.send(JSON.stringify(
+        { event: 'draw'
+        , pick: room.pickA
+        // , channelState: serializeChannelState(room.playerB.channelState)
+        // , signatureA: serializeSignature(signaturePlayerB)
+        }
+      ))
+    } else if (result === 1) {
+      // giveBack(room.playerA)
+      // giveBack(room.playerA)
+      // const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
+      room.playerA.send(JSON.stringify(
+        { event: 'won'
+        , pick: room.pickB
+        // , signature: serialize(signatureB)
+        }
+      ))
+      room.playerB.send(JSON.stringify(
+        { event: 'lost'
+        , pick: room.pickA
+        }
+      ))
+    } else if (result === 2) {
+      // giveBack(room.playerB)
+      // giveBack(room.playerB)
+      // const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
+      room.playerA.send(JSON.stringify(
+        { event: 'lost'
+        , pick: room.pickB
+        }
+      ))
+      room.playerB.send(JSON.stringify(
+        { event: 'won'
+        , pick: room.pickA
+        // , signaturA: serialize(signature)
+        }
+      ))
+    }
+    room.pickA = null
+    room.pickB = null
+  }
 }
 
 function leaveRoom(ws) {
@@ -163,63 +228,6 @@ function leaveRoom(ws) {
     } else {
       room.playerA.send(newMsg)
     }
-  }
-}
-
-async function checkRound(room) {
-  const a = room.pickA
-  const b = room.pickB
-  if (a != null && b != null) {
-    await timeout(1000)
-    const result = rpsCheckRule(a, b)
-    if (result === 0) {
-      giveBack(room.playerA)
-      giveBack(room.playerB)
-      const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
-      const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
-      room.playerA.send(JSON.stringify({
-        event: 'draw',
-        pick: room.pickB,
-        channelState: serializeChannelState(room.playerA.channelState),
-        signatureA: serializeSignature(signaturePlayerA)
-      }))
-      room.playerB.send(JSON.stringify({
-        event: 'draw',
-        pick: room.pickA,
-        channelState: serializeChannelState(room.playerB.channelState),
-        signatureA: serializeSignature(signaturePlayerB)
-      }))
-    } else if (result === 1) {
-      giveBack(room.playerA)
-      giveBack(room.playerA)
-      const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
-      room.playerA.send(JSON.stringify({
-        event: 'won',
-        pick: room.pickB,
-        channelState: serializeChannelState(room.playerA.channelState),
-        signatureA: serializeSignature(signaturePlayerA)
-      }))
-      room.playerB.send(JSON.stringify({
-        event: 'lost',
-        pick: room.pickA
-      }))
-    } else if (result === 2) {
-      giveBack(room.playerB)
-      giveBack(room.playerB)
-      const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
-      room.playerA.send(JSON.stringify({
-        event: 'lost',
-        pick: room.pickB,
-      }))
-      room.playerB.send(JSON.stringify({
-        event: 'won',
-        pick: room.pickA,
-        channelState: serializeChannelState(room.playerB.channelState),
-        signatureA: serializeSignature(signaturePlayerB)
-      }))
-    }
-    room.pickA = null
-    room.pickB = null
   }
 }
 
@@ -352,12 +360,12 @@ function deserializeChannelState(channelState) {
   }
 }
 
-function serializeSignature(signature) {
-  return TonWeb.utils.bytesToBase64(signature)
+function serialize(data) {
+  return TonWeb.utils.bytesToBase64(data)
 }
 
-function deserializeSignature(signature) {
-  return TonWeb.utils.base64ToBytes(signature)
+function deserialize(data) {
+  return TonWeb.utils.base64ToBytes(data)
 }
 
 // Utility

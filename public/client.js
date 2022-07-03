@@ -11,6 +11,8 @@ const state =
   , channel: null
   , fromWallet: null
   , channelState: null
+  , roomId: null
+  , isA: null
   }
 
 // TonWeb
@@ -51,6 +53,15 @@ function setupWebSocket() {
       const hisAddress = new TonWeb.utils.Address(msg.hisAddress)
       const hisPublicKey = deserialize(msg.hisPublicKey)
       setupChannel(msg.roomId, msg.isA, hisAddress, hisPublicKey)
+    } else if (msg.event === 'picked') {
+      gamePicked(msg.isA)
+    } else if (msg.event === 'draw') {
+      gameDraw(msg.pick)
+    } else if (msg.event === 'won') {
+      // state.channelState = deserializeChannelState(msg.channelState)
+      gameWon(msg.pick)
+    } else if (msg.event === 'lost') {
+      gameLost(msg.pick)
     } else {
       console.log('unknown message: %o', msg)
     }
@@ -66,36 +77,6 @@ function setupWebSocket() {
     //   gameYourPickEl.innerText = ''
     //   gameTheirPickEl.innerText = ''
     //   showOnlyPane(hallViewEl)
-    // } else if (msg.event === 'picked') {
-    //   if (msg.addressB !== state.addressB.toString(true, true, true)) {
-    //     gameTheirPickEl.innerText = '☑️'
-    //   }
-    // } else if (msg.event === 'draw') {
-    //   state.channelState = deserializeChannelState(msg.channelState)
-    //   gameTheirPickEl.innerText = icon(msg.pick)
-    //   showResult('draw')
-    //   showChannelBalance()
-    //   setTimeout(function() {
-    //     clearResult()
-    //     enablePickButtons()
-    //   }, 2000)
-    // } else if (msg.event === 'won') {
-    //   state.channelState = deserializeChannelState(msg.channelState)
-    //   gameTheirPickEl.innerText = icon(msg.pick)
-    //   showResult('won')
-    //   showChannelBalance()
-    //   setTimeout(function() {
-    //     clearResult()
-    //     enablePickButtons()
-    //   }, 2000)
-    // } else if (msg.event === 'lost') {
-    //   gameTheirPickEl.innerText = icon(msg.pick)
-    //   showResult('lost')
-    //   showChannelBalance()
-    //   setTimeout(function() {
-    //     clearResult()
-    //     enablePickButtons()
-    //   }, 2000)
     // }
   }
 }
@@ -153,6 +134,8 @@ function showWaitRoomPane() {
 async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
   const createChannelPaneEl = findOne('#createChannelPane')
   showOnlyPane(createChannelPaneEl)
+  state.roomId = roomId
+  state.isA = isA
   const channelInitState =
     { balanceA: toNano('1')
     , balanceB: toNano('1')
@@ -251,8 +234,7 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     })
   }
   await waitForChannelInit()
-  const gamePaneEl = findOne('#gamePane')
-  showOnlyPane(gamePaneEl)
+  startGame()
   // state.wsServer.send(JSON.stringify({
   //   command: 'initChannel',
   //   balanceA: channelInitState.balanceA.toString(),
@@ -315,12 +297,198 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
 //   state.wsServer.send(JSON.stringify({command: 'leave'}))
 // })
 
+async function startGame() {
+  const gamePaneEl = findOne('#gamePane')
+  const gameRoomEl = findOne('#gameRoom')
+  const gameLeaveEl = findOne('#gameLeave')
+  const gamePickREl = findOne('#gamePickR')
+  const gamePickPEl = findOne('#gamePickP')
+  const gamePickSEl = findOne('#gamePickS')
+  const gameYourPickEl = findOne('#gameYourPick')
+  const gameDrawEl = findOne('#gameDraw')
+  const gameWonEl = findOne('#gameWon')
+  const gameLostEl = findOne('#gameLost')
+  showOnlyPane(gamePaneEl)
+  clearResult()
+  showChannelBalance()
+  gameRoomEl.innerText = state.roomId
+  gamePickREl.addEventListener('click', function() {
+    disablePickButtons()
+    gameYourPickEl.innerText = icon('r')
+    const nextChannelState = getChannelStateForNextRound()
+    state.channel.signState(nextChannelState).then(function(signature) {
+      state.wsServer.send(JSON.stringify(
+        { command: 'pick'
+        , pick: 'r'
+        // , nextChannelState: serializeChannelState(nextChannelState)
+        , signature: serialize(signature)
+        }
+      ))
+      state.channelState = nextChannelState
+      showChannelBalance()
+    })
+  })
+  gamePickPEl.addEventListener('click', function() {
+    disablePickButtons()
+    gameYourPickEl.innerText = icon('p')
+    const nextChannelState = getChannelStateForNextRound()
+    state.channel.signState(nextChannelState).then(function(signature) {
+      state.wsServer.send(JSON.stringify(
+        { command: 'pick'
+        , pick: 'p'
+        // , nextChannelState: serializeChannelState(nextChannelState)
+        , signature: serialize(signature)
+        }
+      ))
+      state.channelState = nextChannelState
+      showChannelBalance()
+    })
+  })
+  gamePickSEl.addEventListener('click', function() {
+    disablePickButtons()
+    gameYourPickEl.innerText = icon('s')
+    const nextChannelState = getChannelStateForNextRound()
+    state.channel.signState(nextChannelState).then(function(signature) {
+      state.wsServer.send(JSON.stringify(
+        { command: 'pick'
+        , pick: 's'
+        // , nextChannelState: serializeChannelState(nextChannelState)
+        , signature: serialize(signature)
+        }
+      ))
+      state.channelState = nextChannelState
+      showChannelBalance()
+    })
+  })
+}
+
+function showChannelBalance() {
+  const channelBalanceEl = findOne('#channelBalance')
+  channelBalanceEl.innerText = fromNano(
+    state.isA ? state.channelState.balanceA : state.channelState.balanceB
+  )
+}
+
+function gamePicked(isA) {
+  const gameTheirPickEl = findOne('#gameTheirPick')
+  if (isA != state.isA) {
+    gameTheirPickEl.innerText = '☑️'
+  }
+}
+
+function gameDraw(pick) {
+  state.channelState = getChannelStateForPreviousRound()
+  const gameTheirPickEl = findOne('#gameTheirPick')
+  gameTheirPickEl.innerText = icon(pick)
+  showResult('draw')
+  showChannelBalance()
+  setTimeout(function() {
+    clearResult()
+    enablePickButtons()
+  }, 2000)
+}
+
+function gameWon(pick) {
+  state.channelState = getChannelStateForWonRound()
+  const gameTheirPickEl = findOne('#gameTheirPick')
+  gameTheirPickEl.innerText = icon(pick)
+  showResult('won')
+  showChannelBalance()
+  setTimeout(function() {
+    clearResult()
+    enablePickButtons()
+  }, 2000)
+}
+
+function gameLost(pick) {
+  state.channelState = getChannelStateForLostRound()
+  const gameTheirPickEl = findOne('#gameTheirPick')
+  gameTheirPickEl.innerText = icon(pick)
+  showResult('lost')
+  showChannelBalance()
+  setTimeout(function() {
+    clearResult()
+    enablePickButtons()
+  }, 2000)
+}
+
 function getChannelStateForNextRound() {
-  return nextChannelState = {
-    balanceA: state.channelState.balanceA,
-    balanceB: state.channelState.balanceB.sub(toNano('0.1')),
-    seqnoA: state.channelState.seqnoA,
-    seqnoB: state.channelState.seqnoB.add(new BN('1'))
+  if (state.isA) {
+    return (
+      { balanceA: state.channelState.balanceA.sub(toNano('0.1'))
+      , balanceB: state.channelState.balanceB
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+      , seqnoB: state.channelState.seqnoB
+      }
+    )
+  } else {
+    return (
+      { balanceA: state.channelState.balanceA
+      , balanceB: state.channelState.balanceB.sub(toNano('0.1'))
+      , seqnoA: state.channelState.seqnoA
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+      }
+    )
+  }
+}
+
+function getChannelStateForPreviousRound() {
+  if (state.isA) {
+    return (
+      { balanceA: state.channelState.balanceA.add(toNano('0.1'))
+      , balanceB: state.channelState.balanceB
+      , seqnoA: state.channelState.seqnoA.sub(new BN('1'))
+      , seqnoB: state.channelState.seqnoB
+      }
+    )
+  } else {
+    return (
+      { balanceA: state.channelState.balanceA
+      , balanceB: state.channelState.balanceB.add(toNano('0.1'))
+      , seqnoA: state.channelState.seqnoA
+      , seqnoB: state.channelState.seqnoB.sub(new BN('1'))
+      }
+    )
+  }
+}
+
+function getChannelStateForWonRound() {
+  if (state.isA) {
+    return (
+      { balanceA: state.channelState.balanceA.add(toNano('0.2'))
+      , balanceB: state.channelState.balanceB.sub(toNano('0.1'))
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+      }
+    )
+  } else {
+    return (
+      { balanceA: state.channelState.balanceA.sub(toNano('0.1'))
+      , balanceB: state.channelState.balanceB.add(toNano('0.2'))
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+      }
+    )
+  }
+}
+
+function getChannelStateForLostRound() {
+  if (state.isA) {
+    return (
+      { balanceA: state.channelState.balanceA
+      , balanceB: state.channelState.balanceB.add(toNano('0.2'))
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+      }
+    )
+  } else {
+    return (
+      { balanceA: state.channelState.balanceA.add(toNano('0.2'))
+      , balanceB: state.channelState.balanceB
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+      }
+    )
   }
 }
 
@@ -409,23 +577,27 @@ function icon(x) {
 }
 
 function disablePickButtons() {
+  const gamePickREl = findOne('#gamePickR')
+  const gamePickPEl = findOne('#gamePickP')
+  const gamePickSEl = findOne('#gamePickS')
   gamePickREl.disabled = true
   gamePickPEl.disabled = true
   gamePickSEl.disabled = true
 }
 
 function enablePickButtons() {
+  const gamePickREl = findOne('#gamePickR')
+  const gamePickPEl = findOne('#gamePickP')
+  const gamePickSEl = findOne('#gamePickS')
   gamePickREl.disabled = false
   gamePickPEl.disabled = false
   gamePickSEl.disabled = false
 }
 
-function showChannelBalance() {
-  channelBalanceViewEl.style.display = ''
-  channelBalanceEl.innerText = fromNano(state.channelState.balanceB)
-}
-
 function showResult(r) {
+  const gameDrawEl = findOne('#gameDraw')
+  const gameWonEl = findOne('#gameWon')
+  const gameLostEl = findOne('#gameLost')
   gameDrawEl.style.display = 'none'
   gameWonEl.style.display = 'none'
   gameLostEl.style.display = 'none'
@@ -439,6 +611,11 @@ function showResult(r) {
 }
 
 function clearResult() {
+  const gameYourPickEl = findOne('#gameYourPick')
+  const gameTheirPickEl = findOne('#gameTheirPick')
+  const gameDrawEl = findOne('#gameDraw')
+  const gameWonEl = findOne('#gameWon')
+  const gameLostEl = findOne('#gameLost')
   gameDrawEl.style.display = 'none'
   gameWonEl.style.display = 'none'
   gameLostEl.style.display = 'none'
