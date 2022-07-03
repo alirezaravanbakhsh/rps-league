@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebSockets</title>
+</head>
+<body>
+  <main>
+    <div id="channelBalanceView">
+      <p>Channel Balance: <span id="channelBalance"></span> TON</p>
+    </div>
+
+    <div id="errorView" style="color: darkred;">&nbsp;</div>
+
+    <div id="walletView">
+      Loading Wallet...
+    </div>
+
+    <div id="balanceView">
+      <p>Your Balance: <span id="balanceField"></span> TON</p>
+      <p>Deposit Address:</p>
+      <p id="balanceAddress" style="font-family: monospace;"></p>
+      <button id="balanceCreateChannel">Play Now</button>
+    </div>
+
+    <div id="createChannelView">
+      Creating Payment Channel...
+    </div>
+
+    <div id="initChannelView">
+      Waiting for Init...
+    </div>
+
+    <div id="connectingView">
+      Connecting...
+    </div>
+
+    <div id="hallView">
+      <h3>You are in hall</h3>
+      <button id="hallJoin">Join Someone</button>
+    </div>
+
+    <div id="waitView">
+      <h3>Waiting for Someone</h3>
+      <button id="waitLeave">Leave Room</button>
+    </div>
+
+    <div id="gameView">
+      <h3>Room <span id="gameRoom"></span></h3>
+      <button id="gameLeave">Leave Room</button>
+      <p></p>
+      <button id="gamePickR">Rock ✊</button>
+      <button id="gamePickP">Paper 🖐</button>
+      <button id="gamePickS">Scissors ✌️</button>
+      <p>You: <span id="gameYourPick"></span></p>
+      <p>They: <span id="gameTheirPick"></span></p>
+      <h3 id="gameDraw">Draw</h3>
+      <h3 id="gameWon">Won 😁</h3>
+      <h3 id="gameLost">Lost 😔</h3>
+    </div>
+
+  </main>
+  <script src="tonweb.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
