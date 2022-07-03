@@ -132,7 +132,7 @@ const playNowEl = findOne('#playNow')
 
 playNowEl.addEventListener('click', function() {
   hideError()
-  if (state.balance.gte(toNano('1'))) {
+  if (state.balance.gte(toNano('1.5'))) {
     state.wsServer.send(JSON.stringify(
       { command: 'join'
       , address: state.address.toString(true, true, true)
@@ -203,6 +203,7 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     await waitForChannelCreation()
   }
   console.log('channel created')
+  const data = await state.channel.getData()
   const initializingChannelPaneEl = findOne('#initializingChannelPane')
   showOnlyPane(initializingChannelPaneEl)
   if (isA && data.balanceA.toString() === '0') {
@@ -211,8 +212,8 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
       .send(channelInitState.balanceA.add(toNano('0.05')))
     const waitForTopUpA = function() {
       return state.channel.getData().then(function(data) {
-        console.log('data: %o', data)
-        if (data.balanceA.toString() === '1') {
+        console.log('waiting for top-up')
+        if (data.balanceA.toString() !== '0') {
           return
         } else {
           return timeout(1000).then(waitForTopUpA)
@@ -226,8 +227,8 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
       .send(channelInitState.balanceB.add(toNano('0.05')))
     const waitForTopUpB = function() {
       return state.channel.getData().then(function(data) {
-        console.log('data: %o', data)
-        if (data.balanceB.toString() === '1') {
+        console.log('waiting for top-up')
+        if (data.balanceB.toString() !== '0') {
           return
         } else {
           return timeout(1000).then(waitForTopUpB)
@@ -242,7 +243,7 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
   const waitForChannelInit = function() {
     return state.channel.getChannelState().then(function(s) {
       console.log('channel init state: %s', s)
-      if (s !== 0) {
+      if (s === 1) {
         return
       } else {
         return timeout(1000).then(waitForChannelInit)
