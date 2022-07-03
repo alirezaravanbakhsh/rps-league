@@ -7,17 +7,6 @@ const state = {
   joinList: [],
   roomDict: {},
   nextRoomId: 0,
-  seed: null,
-  keyPair: null,
-  wallet: null,
-  address: null,
-  balance: null
-}
-
-function timeout(ms) {
-  return new Promise(function(resolve) {
-    setTimeout(resolve, ms)
-  })
 }
 
 // TonWeb
@@ -27,19 +16,6 @@ const fromNano = TonWeb.utils.fromNano
 const providerUrl = 'https://testnet.toncenter.com/api/v2/jsonRPC'
 const apiKey = '0b673465b3dff8f572d26adb553f2bdabcd894c19d7b74c8104d6b3fb56b00bc'
 const tonweb = new TonWeb(new TonWeb.HttpProvider(providerUrl, {apiKey}))
-setupWallet()
-
-async function setupWallet() {
-  const seedBase64 = 'jGNhby2AUjooi2UCGSKnjnxgLHgSaWNCHxNVkzGVqZA='
-  const seed = TonWeb.utils.base64ToBytes(seedBase64)
-  state.seed = seed
-  state.keyPair = TonWeb.utils.keyPairFromSeed(seed)
-  state.wallet = tonweb.wallet.create({publicKey: state.keyPair.publicKey, wc: 0})
-  state.address = await state.wallet.getAddress()
-  state.balance = await tonweb.getBalance(state.address)
-  console.log('Wallet address: %s', state.address.toString(true, true, true))
-  console.log('Wallet balance: %s TON', fromNano(state.balance))
-}
 
 const app = express()
 app.use('/', express.static(path.resolve(__dirname, './public')))
@@ -60,32 +36,78 @@ myServer.on('upgrade', async function upgrade(request, socket, head) {
 wsServer.on('connection', function(ws) {
   ws.on('message', function(m) {
     const msg = JSON.parse(m.toString())
-    if (msg.command === 'getAddress') {
-      ws.send(JSON.stringify({
-        event: 'address',
-        address: state.address.toString(true, true, true),
-        publicKey: TonWeb.utils.bytesToBase64(state.keyPair.publicKey)
-      }))
-    } else if (msg.command === 'initChannel') {
-      initChannel(ws, msg)
-    } else if (msg.command === 'join') {
-      queue(ws)
-      ws.send(JSON.stringify({event: 'waiting'}))
-      setTimeout(joinPlayers, 500)
-    } else if (msg.command === 'exit') {
-      closeChannel(ws, msg)
-    } else if (msg.command === 'leave') {
-      leaveRoom(ws)
-    } else if (msg.command === 'pick') {
-      checkPick(ws, msg)
+    if (msg.command === 'join') {
+      queue(ws, msg)
     } else {
       console.log('unknown message: %s', msg)
     }
+    // if (msg.command === 'getAddress') {
+    //   ws.send(JSON.stringify({
+    //     event: 'address',
+    //     address: state.address.toString(true, true, true),
+    //     publicKey: TonWeb.utils.bytesToBase64(state.keyPair.publicKey)
+    //   }))
+    // } else if (msg.command === 'initChannel') {
+    //   initChannel(ws, msg)
+    // } else if (msg.command === 'exit') {
+    //   closeChannel(ws, msg)
+    // } else if (msg.command === 'leave') {
+    //   leaveRoom(ws)
+    // } else if (msg.command === 'pick') {
+    //   checkPick(ws, msg)
   })
   ws.on('close', function() {
     leaveRoom(ws)
   })
 })
+
+function queue(ws, msg) {
+  ws.address = msg.address
+  ws.publicKey = msg.publicKey
+  state.joinList = state.joinList.filter(function(entry) {
+    if (entry.address !== ws.address) {
+      return true
+    } else {
+      entry.close()
+      return false
+    }
+  })
+  state.joinList.push(ws)
+  ws.send(JSON.stringify({event: 'waiting'}))
+  setTimeout(joinPlayers, 500)
+}
+
+function joinPlayers() {
+  while (state.joinList.length >= 2) {
+    const room =
+      { playerA: state.joinList.pop()
+      , playerB: state.joinList.pop()
+      // , pickA: null
+      // , pickB: null
+      }
+    state.nextRoomId += 1
+    const roomId = state.nextRoomId
+    room.playerA.roomId = roomId
+    room.playerB.roomId = roomId
+    state.roomDict[roomId] = room
+    room.playerA.send(JSON.stringify(
+      { event: 'joined'
+      , roomId: roomId
+      , isA: true
+      , hisAddress: room.playerB.address
+      , hisPublicKey: room.playerB.publicKey
+      }
+    ))
+    room.playerB.send(JSON.stringify(
+      { event: 'joined'
+      , roomId: roomId
+      , isA: false
+      , hisAddress: room.playerA.address
+      , hisPublicKey: room.playerA.publicKey
+      }
+    ))
+  }
+}
 
 async function checkPick(ws, msg) {
   const nextChannelState = deserializeChannelState(msg.nextChannelState)
@@ -122,37 +144,6 @@ async function checkPick(ws, msg) {
   room.playerA.send(newMsg)
   room.playerB.send(newMsg)
   checkRound(room)
-}
-
-function queue(ws) {
-  state.joinList = state.joinList.filter(function(entry) {
-    if (entry.addressB.toString(true, true, true) !== ws.addressB.toString(true, true, true)) {
-      return true
-    } else {
-      entry.close()
-      return false
-    }
-  })
-  state.joinList.push(ws)
-}
-
-function joinPlayers() {
-  while (state.joinList.length >= 2) {
-    const room = {
-      playerA: state.joinList.pop(),
-      playerB: state.joinList.pop(),
-      pickA: null,
-      pickB: null
-    }
-    state.nextRoomId += 1
-    const roomId = state.nextRoomId
-    room.playerA.roomId = roomId
-    room.playerB.roomId = roomId
-    state.roomDict[roomId] = room
-    const newMsg = JSON.stringify({event: 'joined', roomId: roomId})
-    room.playerA.send(newMsg)
-    room.playerB.send(newMsg)
-  }
 }
 
 function leaveRoom(ws) {
@@ -367,4 +358,12 @@ function serializeSignature(signature) {
 
 function deserializeSignature(signature) {
   return TonWeb.utils.base64ToBytes(signature)
+}
+
+// Utility
+
+function timeout(ms) {
+  return new Promise(function(resolve) {
+    setTimeout(resolve, ms)
+  })
 }

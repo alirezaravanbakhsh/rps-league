@@ -4,51 +4,35 @@
   <meta charset="UTF-8">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WebSockets</title>
+  <title>✊🖐✌️ Hack-a-TON</title>
 </head>
 <body>
   <main>
-    <div id="channelBalanceView">
-      <p>Channel Balance: <span id="channelBalance"></span> TON</p>
-    </div>
+    <h1>✊🖐✌️ Hack-a-TON</h1>
 
-    <div id="errorView" style="color: darkred;">&nbsp;</div>
+    <p id="errorMessage" style="color: darkred;">&nbsp;</p>
 
-    <div id="walletView">
-      Loading Wallet...
-    </div>
-
-    <div id="balanceView">
-      <p>Your Balance: <span id="balanceField"></span> TON</p>
+    <div id="walletPane">
+      <p>Wallet Balance: <span id="walletBalance">...</span> TON</p>
       <p>Deposit Address:</p>
-      <p id="balanceAddress" style="font-family: monospace;"></p>
-      <button id="balanceCreateChannel">Play Now</button>
+      <p id="walletAddress" style="font-family: monospace;"></p>
+      <button id="playNow">Play Now</button>
     </div>
 
-    <div id="createChannelView">
+    <div id="waitRoomPane">
+      <h3>Waiting for Another Player</h3>
+      <!-- <button id="waitLeave">Leave Room</button> -->
+    </div>
+
+    <div id="createChannelPane">
       Creating Payment Channel...
     </div>
 
-    <div id="initChannelView">
-      Waiting for Init...
+    <div id="initializingChannelPane">
+      Initializing...
     </div>
 
-    <div id="connectingView">
-      Connecting...
-    </div>
-
-    <div id="hallView">
-      <h3>You are in hall</h3>
-      <button id="hallJoin">Join Someone</button>
-      <button id="hallExit">Exit</button>
-    </div>
-
-    <div id="waitView">
-      <h3>Waiting for Someone</h3>
-      <button id="waitLeave">Leave Room</button>
-    </div>
-
-    <div id="gameView">
+    <div id="gamePane">
       <h3>Room <span id="gameRoom"></span></h3>
       <button id="gameLeave">Leave Room</button>
       <p></p>
@@ -61,6 +45,24 @@
       <h3 id="gameWon">Won 😁</h3>
       <h3 id="gameLost">Lost 😔</h3>
     </div>
+
+    <!-- <aside id="channelBalance">
+      <p>Channel Balance: <span id="channelBalance"></span> TON</p>
+    </aside>
+
+
+
+    <div id="connectingPane">
+      Connecting...
+    </div>
+
+    <div id="hallPane">
+      <h3>You are in hall</h3>
+      <button id="hallJoin">Join Someone</button>
+      <button id="hallExit">Exit</button>
+    </div>
+
+    -->
 
   </main>
   <script src="tonweb.js"></script>
