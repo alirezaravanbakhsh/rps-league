@@ -58,6 +58,7 @@ const connectingViewEl = findOne('#connectingView')
 
 const hallViewEl = findOne('#hallView')
 const hallJoinEl = findOne('#hallJoin')
+const hallExitEl = findOne('#hallExit')
 
 const waitViewEl = findOne('#waitView')
 const waitLeaveEl = findOne('#waitLeave')
@@ -281,6 +282,8 @@ function setupWebSocket() {
     } else if (msg.event === 'waiting') {
       show(waitViewEl)
       hideError()
+    } else if (msg.event === 'closed') {
+      wsServer.send(JSON.stringify({command: 'getAddress'}))
     } else if (msg.event === 'left') {
       gameYourPickEl.innerText = ''
       gameTheirPickEl.innerText = ''
@@ -328,6 +331,16 @@ function setupWebSocket() {
 
 hallJoinEl.addEventListener('click', function() {
   state.wsServer.send(JSON.stringify({command: 'join'}))
+})
+
+hallExitEl.addEventListener('click', function() {
+  state.channelB.signClose(state.channelState)
+  .then(function(signatureCloseB){
+    state.wsServer.send(JSON.stringify({
+      command: 'exit',
+      signatureCloseB: serializeSignature(signatureCloseB)
+    }))
+  })
 })
 
 waitLeaveEl.addEventListener('click', function() {

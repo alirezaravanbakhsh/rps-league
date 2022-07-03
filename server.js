@@ -72,6 +72,8 @@ wsServer.on('connection', function(ws) {
       queue(ws)
       ws.send(JSON.stringify({event: 'waiting'}))
       setTimeout(joinPlayers, 500)
+    } else if (msg.command === 'exit') {
+      closeChannel(ws, msg)
     } else if (msg.command === 'leave') {
       leaveRoom(ws)
     } else if (msg.command === 'pick') {
@@ -231,8 +233,6 @@ async function checkRound(room) {
 }
 
 function giveBack(ws) {
-  console.log(ws.channelState.balanceA)
-  console.log(ws.channelState.balanceB)
   const nextChannelState = {
     balanceA: ws.channelState.balanceA.sub(toNano('0.1')),
     balanceB: ws.channelState.balanceB.add(toNano('0.1')),
@@ -311,6 +311,36 @@ function initChannel(ws, msg) {
     console.log('error in initializing channel: %s', e)
     ws.send(JSON.stringify({event: 'error', text: 'error in initializing channel'}))
   })
+}
+
+async function closeChannel(ws, msg) {
+  const signatureCloseB = deserializeSignature(msg.signatureCloseB)
+  const valid = await ws.channelA.verifyClose(ws.channelState, signatureCloseB)
+  if (!valid) {
+    ws.send(JSON.stringify({event: 'error', text: 'Cannot verify close signature'}))
+  } else {
+    const waitForClosure = function() {
+      return ws.channelA.getChannelState().then(function(state){
+        console.log('close state: %s', state)
+        if (state === 0) {
+          return
+        } else {
+          return timeout(1000).then(waitForClosure)
+        }
+      })
+    }
+    ws.fromWalletA.close({
+      ...ws.channelState,
+      hisSignature: signatureCloseB
+    }).send(toNano('0.05'))
+    .then(waitForClosure)
+    .then(function() {
+      ws.send(JSON.stringify({event: 'closed'}))
+    })
+    .catch(function(e) {
+      console.log('error in closing channel: %s', e)
+    })
+  }
 }
 
 function serializeChannelState(channelState) {
