@@ -5,12 +5,21 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>✊🖐✌️ Hack-a-TON</title>
+  <style>
+    main.loading>div
+    { display: none
+    }
+  </style>
 </head>
 <body>
-  <main>
+  <main class="loading">
     <h1>✊🖐✌️ Hack-a-TON</h1>
 
     <p id="errorMessage" style="color: darkred;">&nbsp;</p>
+
+    <div id="connectingPane">
+      Connecting...
+    </div>
 
     <div id="walletPane">
       <p>Wallet Balance: <span id="walletBalance">...</span> TON</p>
@@ -26,6 +35,10 @@
 
     <div id="createChannelPane">
       Creating Payment Channel...
+    </div>
+
+    <div id="topUpPane">
+      Waiting for top-up of both players...
     </div>
 
     <div id="initializingChannelPane">
@@ -47,15 +60,11 @@
       <h3 id="gameLost">Lost 😔</h3>
     </div>
 
-    <!-- <aside id="channelBalance">
-      <p>Channel Balance: <span id="channelBalance"></span> TON</p>
-    </aside>
-
-
-
-    <div id="connectingPane">
-      Connecting...
+    <div id="closingChannelPane">
+      Closing Channel...
     </div>
+
+    <!--
 
     <div id="hallPane">
       <h3>You are in hall</h3>

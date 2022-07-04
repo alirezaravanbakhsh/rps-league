@@ -6,7 +6,7 @@ const TonWeb = require('tonweb')
 const state = {
   joinList: [],
   roomDict: {},
-  nextRoomId: 0,
+  nextRoomId: 300,
 }
 
 // TonWeb
@@ -40,8 +40,10 @@ wsServer.on('connection', function(ws) {
       queue(ws, msg)
     } else if (msg.command === 'pick') {
       checkPick(ws, msg)
+    } else if (msg.command === 'leave') {
+      leaveRoom(ws, msg)
     } else {
-      console.log('unknown message: %s', msg)
+      console.error('unknown message', msg)
     }
     // if (msg.command === 'getAddress') {
     //   ws.send(JSON.stringify({
@@ -53,11 +55,9 @@ wsServer.on('connection', function(ws) {
     //   initChannel(ws, msg)
     // } else if (msg.command === 'exit') {
     //   closeChannel(ws, msg)
-    // } else if (msg.command === 'leave') {
-    //   leaveRoom(ws)
   })
   ws.on('close', function() {
-    leaveRoom(ws)
+    dequeue(ws)
   })
 })
 
@@ -75,6 +75,12 @@ function queue(ws, msg) {
   state.joinList.push(ws)
   ws.send(JSON.stringify({event: 'waiting'}))
   setTimeout(joinPlayers, 500)
+}
+
+function dequeue(ws) {
+  state.joinList = state.joinList.filter(function(entry) {
+    return entry !== ws
+  })
 }
 
 function joinPlayers() {
@@ -111,7 +117,7 @@ function joinPlayers() {
 
 async function checkPick(ws, msg) {
   // const nextChannelState = deserializeChannelState(msg.nextChannelState)
-  const signature = deserialize(msg.signature)
+  // const signature = deserialize(msg.signature)
   // if (nextChannelState.balanceA.toString() != ws.channelState.balanceA.toString()) {
   //   return console.log('balanceA mismatch')
   // }
@@ -135,11 +141,11 @@ async function checkPick(ws, msg) {
   if (ws === room.playerA) {
     room.pickA = pick
     isA = true
-    room.signatureB = signature
+    // room.signatureB = signature
   } else {
     room.pickB = pick
     isA = false
-    room.signatureA = signature
+    // room.signatureA = signature
   }
   const newMsg = JSON.stringify({
     event: 'picked',
@@ -211,35 +217,37 @@ async function checkRound(room) {
   }
 }
 
-function leaveRoom(ws) {
-  state.joinList = state.joinList.filter(function(entry) {
-    return entry !== ws
-  })
-  const newMsg = JSON.stringify({event: 'left'})
-  ws.send(newMsg)
+function leaveRoom(ws, msg) {
   const roomId = ws.roomId
   if (roomId != null) {
     const room = state.roomDict[roomId]
-    state.roomDict[roomId] = null
-    room.playerA.roomId = null
-    room.playerB.roomId = null
-    if (ws === room.playerA) {
-      room.playerB.send(newMsg)
-    } else {
-      room.playerA.send(newMsg)
+    if (room) {
+      state.roomDict[roomId] = null
+      room.playerA.roomId = null
+      room.playerB.roomId = null
+      const newMsg = JSON.stringify(
+        { event: 'left'
+        , signature: msg.signature
+        }
+      )
+      if (ws === room.playerA) {
+        room.playerB.send(newMsg)
+      } else {
+        room.playerA.send(newMsg)
+      }
     }
   }
 }
 
-function giveBack(ws) {
-  const nextChannelState = {
-    balanceA: ws.channelState.balanceA.sub(toNano('0.1')),
-    balanceB: ws.channelState.balanceB.add(toNano('0.1')),
-    seqnoA: ws.channelState.seqnoA.add(new BN('1')),
-    seqnoB: ws.channelState.seqnoB
-  }
-  ws.channelState = nextChannelState
-}
+// function giveBack(ws) {
+//   const nextChannelState = {
+//     balanceA: ws.channelState.balanceA.sub(toNano('0.1')),
+//     balanceB: ws.channelState.balanceB.add(toNano('0.1')),
+//     seqnoA: ws.channelState.seqnoA.add(new BN('1')),
+//     seqnoB: ws.channelState.seqnoB
+//   }
+//   ws.channelState = nextChannelState
+// }
 
 function rpsCheckRule(a, b) {
   if (a === 'r' && b === 'p') {
@@ -259,114 +267,114 @@ function rpsCheckRule(a, b) {
   }
 }
 
-function initChannel(ws, msg) {
-  const channelInitState = {
-    balanceA: new BN(msg.balanceA),
-    balanceB: new BN(msg.balanceB),
-    seqnoA: new BN(0),
-    seqnoB: new BN(0)
-  }
-  const channelConfig = {
-    channelId: new BN(msg.channelId),
-    addressA: state.address,
-    addressB: new TonWeb.utils.Address(msg.addressB),
-    initBalanceA: channelInitState.balanceA,
-    initBalanceB: channelInitState.balanceB
-  }
-  const channelA = tonweb.payments.createChannel({
-    ...channelConfig,
-    isA: true,
-    myKeyPair: state.keyPair,
-    hisPublicKey: TonWeb.utils.base64ToBytes(msg.publicKeyB)
-  })
-  const fromWalletA = channelA.fromWallet({
-    wallet: state.wallet,
-    secretKey: state.keyPair.secretKey
-  })
-  const checkBalanceA = function() {
-    return channelA.getData().then(function(data) {
-      if (data.balanceA.toString() !== '0') {
-        return
-      } else {
-        return timeout(1000).then(checkBalanceA)
-      }
-    })
-  }
-  fromWalletA
-  .topUp({coinsA: channelInitState.balanceA, coinsB: new BN(0)})
-  .send(channelInitState.balanceA.add(toNano('0.05')))
-  .then(checkBalanceA)
-  .then(function() {
-    return fromWalletA.init(channelInitState).send(toNano('0.05'))
-  })
-  .then(function() {
-    ws.channelState = channelInitState
-    ws.addressB = channelConfig.addressB
-    ws.channelA = channelA
-    ws.fromWalletA = fromWalletA
-    ws.send(JSON.stringify({event: 'channelInitialized'}))
-  })
-  .catch(function(e) {
-    console.log('error in initializing channel: %s', e)
-    ws.send(JSON.stringify({event: 'error', text: 'error in initializing channel'}))
-  })
-}
+// function initChannel(ws, msg) {
+//   const channelInitState = {
+//     balanceA: new BN(msg.balanceA),
+//     balanceB: new BN(msg.balanceB),
+//     seqnoA: new BN(0),
+//     seqnoB: new BN(0)
+//   }
+//   const channelConfig = {
+//     channelId: new BN(msg.channelId),
+//     addressA: state.address,
+//     addressB: new TonWeb.utils.Address(msg.addressB),
+//     initBalanceA: channelInitState.balanceA,
+//     initBalanceB: channelInitState.balanceB
+//   }
+//   const channelA = tonweb.payments.createChannel({
+//     ...channelConfig,
+//     isA: true,
+//     myKeyPair: state.keyPair,
+//     hisPublicKey: TonWeb.utils.base64ToBytes(msg.publicKeyB)
+//   })
+//   const fromWalletA = channelA.fromWallet({
+//     wallet: state.wallet,
+//     secretKey: state.keyPair.secretKey
+//   })
+//   const checkBalanceA = function() {
+//     return channelA.getData().then(function(data) {
+//       if (data.balanceA.toString() !== '0') {
+//         return
+//       } else {
+//         return timeout(1000).then(checkBalanceA)
+//       }
+//     })
+//   }
+//   fromWalletA
+//   .topUp({coinsA: channelInitState.balanceA, coinsB: new BN(0)})
+//   .send(channelInitState.balanceA.add(toNano('0.05')))
+//   .then(checkBalanceA)
+//   .then(function() {
+//     return fromWalletA.init(channelInitState).send(toNano('0.05'))
+//   })
+//   .then(function() {
+//     ws.channelState = channelInitState
+//     ws.addressB = channelConfig.addressB
+//     ws.channelA = channelA
+//     ws.fromWalletA = fromWalletA
+//     ws.send(JSON.stringify({event: 'channelInitialized'}))
+//   })
+//   .catch(function(e) {
+//     console.log('error in initializing channel: %s', e)
+//     ws.send(JSON.stringify({event: 'error', text: 'error in initializing channel'}))
+//   })
+// }
 
-async function closeChannel(ws, msg) {
-  const signatureCloseB = deserializeSignature(msg.signatureCloseB)
-  const valid = await ws.channelA.verifyClose(ws.channelState, signatureCloseB)
-  if (!valid) {
-    ws.send(JSON.stringify({event: 'error', text: 'Cannot verify close signature'}))
-  } else {
-    const waitForClosure = function() {
-      return ws.channelA.getChannelState().then(function(state){
-        console.log('close state: %s', state)
-        if (state === 0) {
-          return
-        } else {
-          return timeout(1000).then(waitForClosure)
-        }
-      })
-    }
-    ws.fromWalletA.close({
-      ...ws.channelState,
-      hisSignature: signatureCloseB
-    }).send(toNano('0.05'))
-    .then(waitForClosure)
-    .then(function() {
-      ws.send(JSON.stringify({event: 'closed'}))
-    })
-    .catch(function(e) {
-      console.log('error in closing channel: %s', e)
-    })
-  }
-}
+// async function closeChannel(ws, msg) {
+//   const signatureCloseB = deserializeSignature(msg.signatureCloseB)
+//   const valid = await ws.channelA.verifyClose(ws.channelState, signatureCloseB)
+//   if (!valid) {
+//     ws.send(JSON.stringify({event: 'error', text: 'Cannot verify close signature'}))
+//   } else {
+//     const waitForClosure = function() {
+//       return ws.channelA.getChannelState().then(function(state){
+//         console.log('close state: %s', state)
+//         if (state === 0) {
+//           return
+//         } else {
+//           return timeout(1000).then(waitForClosure)
+//         }
+//       })
+//     }
+//     ws.fromWalletA.close({
+//       ...ws.channelState,
+//       hisSignature: signatureCloseB
+//     }).send(toNano('0.05'))
+//     .then(waitForClosure)
+//     .then(function() {
+//       ws.send(JSON.stringify({event: 'closed'}))
+//     })
+//     .catch(function(e) {
+//       console.log('error in closing channel: %s', e)
+//     })
+//   }
+// }
 
-function serializeChannelState(channelState) {
-  return {
-    balanceA: channelState.balanceA.toString(),
-    balanceB: channelState.balanceB.toString(),
-    seqnoA: channelState.seqnoA.toString(),
-    seqnoB: channelState.seqnoB.toString()
-  }
-}
+// function serializeChannelState(channelState) {
+//   return {
+//     balanceA: channelState.balanceA.toString(),
+//     balanceB: channelState.balanceB.toString(),
+//     seqnoA: channelState.seqnoA.toString(),
+//     seqnoB: channelState.seqnoB.toString()
+//   }
+// }
 
-function deserializeChannelState(channelState) {
-  return {
-    balanceA: new BN(channelState.balanceA),
-    balanceB: new BN(channelState.balanceB),
-    seqnoA: new BN(channelState.seqnoA),
-    seqnoB: new BN(channelState.seqnoB)
-  }
-}
+// function deserializeChannelState(channelState) {
+//   return {
+//     balanceA: new BN(channelState.balanceA),
+//     balanceB: new BN(channelState.balanceB),
+//     seqnoA: new BN(channelState.seqnoA),
+//     seqnoB: new BN(channelState.seqnoB)
+//   }
+// }
 
-function serialize(data) {
-  return TonWeb.utils.bytesToBase64(data)
-}
+// function serialize(data) {
+//   return TonWeb.utils.bytesToBase64(data)
+// }
 
-function deserialize(data) {
-  return TonWeb.utils.base64ToBytes(data)
-}
+// function deserialize(data) {
+//   return TonWeb.utils.base64ToBytes(data)
+// }
 
 // Utility
 

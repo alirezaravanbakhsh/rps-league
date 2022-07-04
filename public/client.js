@@ -13,6 +13,7 @@ const state =
   , channelState: null
   , roomId: null
   , isA: null
+  , picked: null
   }
 
 // TonWeb
@@ -24,30 +25,36 @@ const apiKey = '0b673465b3dff8f572d26adb553f2bdabcd894c19d7b74c8104d6b3fb56b00bc
 const tonweb = new TonWeb(new TonWeb.HttpProvider(providerUrl, {apiKey}))
 
 hideAllPanes()
+hideLoading()
 setupWebSocket()
 
 function setupWebSocket() {
+  const connectingPaneEl = findOne('#connectingPane')
+  showOnlyPane(connectingPaneEl)
   const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/myWebsocket'
   const wsServer = new WebSocket(url)
   state.wsServer = wsServer
 
-  wsServer.onerror = function() {
-    showError('Error connecting to websocket server.')
+  wsServer.onerror = function(e) {
+    showError('Error connecting to websocket server.', e)
   }
 
   wsServer.onclose = function() {
-    hideAllPanes()
+    showOnlyPane(connectingPaneEl)
     showError('Connection to websocket closed.')
+    timeout(5000).then(setupWebSocket)
   }
 
   wsServer.onopen = function() {
-    showWalletPane()
+    setupWallet()
     // wsServer.send(JSON.stringify({command: 'getAddress'}))
   }
 
   wsServer.onmessage = function(m) {
     const msg = JSON.parse(m.data)
-    if (msg.event === 'waiting') {
+    if (msg.event === 'error') {
+      showError(msg.text)
+    } else if (msg.event === 'waiting') {
       showWaitRoomPane()
     } else if (msg.event === 'joined') {
       const hisAddress = new TonWeb.utils.Address(msg.hisAddress)
@@ -55,6 +62,8 @@ function setupWebSocket() {
       setupChannel(msg.roomId, msg.isA, hisAddress, hisPublicKey)
     } else if (msg.event === 'picked') {
       gamePicked(msg.isA)
+    } else if (msg.event === 'left') {
+      gameClose(msg.signature)
     } else if (msg.event === 'draw') {
       gameDraw(msg.pick)
     } else if (msg.event === 'won') {
@@ -63,25 +72,19 @@ function setupWebSocket() {
     } else if (msg.event === 'lost') {
       gameLost(msg.pick)
     } else {
-      console.log('unknown message: %o', msg)
+      console.error('unknown message:', msg)
     }
-    // if (msg.event === 'error') {
-    //   showError(msg.text)
     // } else if (msg.event === 'address') {
     //   setupWallet(msg.address, msg.publicKey)
     // } else if (msg.event === 'channelInitialized') {
     //   checkInitialized()
     // } else if (msg.event === 'closed') {
     //   wsServer.send(JSON.stringify({command: 'getAddress'}))
-    // } else if (msg.event === 'left') {
-    //   gameYourPickEl.innerText = ''
-    //   gameTheirPickEl.innerText = ''
-    //   showOnlyPane(hallViewEl)
     // }
   }
 }
 
-async function showWalletPane() {
+async function setupWallet() {
   if (state.seed == null) {
     const existingSeed = localStorage.getItem('seed')
     if (existingSeed) {
@@ -93,6 +96,7 @@ async function showWalletPane() {
     state.keyPair = TonWeb.utils.keyPairFromSeed(state.seed)
     state.wallet = tonweb.wallet.create({publicKey: state.keyPair.publicKey, wc: 0})
     state.address = await state.wallet.getAddress()
+    console.log('my wallet address:', state.address.toString(true, true, true))
   }
   const walletAddressEl = findOne('#walletAddress')
   walletAddressEl.innerText = state.address.toString(true, true, true)
@@ -110,7 +114,6 @@ async function refreshBalance() {
 }
 
 const playNowEl = findOne('#playNow')
-
 playNowEl.addEventListener('click', function() {
   hideError()
   if (state.balance.gte(toNano('1.5'))) {
@@ -163,17 +166,17 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     }
   )
   const channelAddress = await state.channel.getAddress()
-  console.log('channel address: %s', channelAddress.toString(true, true, true))
+  console.log('channel address:', channelAddress.toString(true, true, true))
   try {
     const s = await state.channel.getChannelState()
     console.log('channel exists, skipping creation')
   } catch (e) {
+    console.log('waiting for channel creation...')
     if (isA) {
       await state.fromWallet.deploy().send(toNano('0.05'))
     }
     const waitForChannelCreation = function() {
       return state.channel.getChannelState().then(function(s) {
-        console.log('channel creation state: %s', s)
         if (s === 0) {
           return
         } else {
@@ -185,55 +188,79 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     }
     await waitForChannelCreation()
   }
-  console.log('channel created')
   const data = await state.channel.getData()
-  const initializingChannelPaneEl = findOne('#initializingChannelPane')
-  showOnlyPane(initializingChannelPaneEl)
+  const topUpPaneEl = findOne('#topUpPane')
+  showOnlyPane(topUpPaneEl)
   if (isA && data.balanceA.toString() === '0') {
+    console.log('waiting for channel top-up...')
     await state.fromWallet
       .topUp({coinsA: channelInitState.balanceA, coinsB: new BN(0)})
       .send(channelInitState.balanceA.add(toNano('0.05')))
     const waitForTopUpA = function() {
       return state.channel.getData().then(function(data) {
-        console.log('waiting for top-up')
         if (data.balanceA.toString() !== '0') {
           return
         } else {
           return timeout(1000).then(waitForTopUpA)
         }
+      }).catch(function(e) {
+        console.error('error in waiting for top-up:', e)
+        return timeout(1000).then(waitForTopUpA)
       })
     }
     await waitForTopUpA()
-  } else {
+  } else if (!isA && data.balanceB.toString() === '0') {
+    console.log('waiting for channel top-up...')
     await state.fromWallet
       .topUp({coinsA: new BN(0), coinsB: channelInitState.balanceB})
       .send(channelInitState.balanceB.add(toNano('0.05')))
     const waitForTopUpB = function() {
       return state.channel.getData().then(function(data) {
-        console.log('waiting for top-up')
         if (data.balanceB.toString() !== '0') {
           return
         } else {
           return timeout(1000).then(waitForTopUpB)
         }
+      }).catch(function(e) {
+        console.error('error in waiting for top-up:', e)
+        return timeout(1000).then(waitForTopUpB)
       })
     }
     await waitForTopUpB()
+  } else {
+    console.log('skipping top-up')
   }
-  if (!isA) {
-    await state.fromWallet.init(channelInitState).send(toNano('0.05'))
-  }
+  const initializingChannelPaneEl = findOne('#initializingChannelPane')
+  showOnlyPane(initializingChannelPaneEl)
   const waitForChannelInit = function() {
     return state.channel.getChannelState().then(function(s) {
-      console.log('channel init state: %s', s)
       if (s === 1) {
         return
       } else {
         return timeout(1000).then(waitForChannelInit)
       }
+    }).catch(function(e) {
+      console.error('error in waiting for init:', e)
+      return timeout(1000).then(waitForChannelInit)
     })
   }
-  await waitForChannelInit()
+  const s = await state.channel.getChannelState()
+  if (s === 1) {
+    console.log('channel is already initialized, skipping')
+  } else {
+    if (!isA) {
+      await state.fromWallet.init(channelInitState).send(toNano('0.05'))
+    }
+    console.log('waiting for channel init...')
+    await waitForChannelInit()
+  }
+  console.log('channel is ready')
+  state.channelState =
+    { balanceA: state.channelState.balanceA
+    , balanceB: state.channelState.balanceB
+    , seqnoA: state.channelState.seqnoA.add(new BN('1'))
+    , seqnoB: state.channelState.seqnoB.add(new BN('1'))
+    }
   startGame()
   // state.wsServer.send(JSON.stringify({
   //   command: 'initChannel',
@@ -297,70 +324,141 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
 //   state.wsServer.send(JSON.stringify({command: 'leave'}))
 // })
 
+const gamePaneEl = findOne('#gamePane')
+const gameRoomEl = findOne('#gameRoom')
+const gameLeaveEl = findOne('#gameLeave')
+const gamePickREl = findOne('#gamePickR')
+const gamePickPEl = findOne('#gamePickP')
+const gamePickSEl = findOne('#gamePickS')
+const gameYourPickEl = findOne('#gameYourPick')
+const gameTheirPickEl = findOne('#gameTheirPick')
+const gameDrawEl = findOne('#gameDraw')
+const gameWonEl = findOne('#gameWon')
+const gameLostEl = findOne('#gameLost')
+
 async function startGame() {
-  const gamePaneEl = findOne('#gamePane')
-  const gameRoomEl = findOne('#gameRoom')
-  const gameLeaveEl = findOne('#gameLeave')
-  const gamePickREl = findOne('#gamePickR')
-  const gamePickPEl = findOne('#gamePickP')
-  const gamePickSEl = findOne('#gamePickS')
-  const gameYourPickEl = findOne('#gameYourPick')
-  const gameDrawEl = findOne('#gameDraw')
-  const gameWonEl = findOne('#gameWon')
-  const gameLostEl = findOne('#gameLost')
   showOnlyPane(gamePaneEl)
   clearResult()
   showChannelBalance()
   gameRoomEl.innerText = state.roomId
-  gamePickREl.addEventListener('click', function() {
+}
+
+gameLeaveEl.addEventListener('click', function() {
+  clearResult()
+  disablePickButtons()
+  if (state.picked) {
+    state.channelState = getChannelStateForPreviousRound()
+  }
+  state.channel.signClose(state.channelState).then(function(signature) {
+    state.wsServer.send(JSON.stringify(
+      { command: 'leave'
+      , signature: serialize(signature)
+      }
+    ))
+    clearResult()
     disablePickButtons()
-    gameYourPickEl.innerText = icon('r')
-    const nextChannelState = getChannelStateForNextRound()
-    state.channel.signState(nextChannelState).then(function(signature) {
-      state.wsServer.send(JSON.stringify(
-        { command: 'pick'
-        , pick: 'r'
-        // , nextChannelState: serializeChannelState(nextChannelState)
-        , signature: serialize(signature)
-        }
-      ))
-      state.channelState = nextChannelState
-      showChannelBalance()
-    })
+    const closingChannelPaneEl = findOne('#closingChannelPane')
+    showOnlyPane(closingChannelPaneEl)
+    console.log('waiting for channel close...')
+    waitForChannelClose().then(function() {
+      console.log('channel closed')
+    }).then(setupWebSocket)
   })
-  gamePickPEl.addEventListener('click', function() {
+})
+
+async function gameClose(signature) {
+  if (state.picked) {
+    state.channelState = getChannelStateForPreviousRound()
+  }
+  const valid = await state.channel.verifyClose(state.channelState, deserialize(signature))
+  if (valid) {
+    clearResult()
     disablePickButtons()
-    gameYourPickEl.innerText = icon('p')
-    const nextChannelState = getChannelStateForNextRound()
-    state.channel.signState(nextChannelState).then(function(signature) {
-      state.wsServer.send(JSON.stringify(
-        { command: 'pick'
-        , pick: 'p'
-        // , nextChannelState: serializeChannelState(nextChannelState)
-        , signature: serialize(signature)
-        }
-      ))
-      state.channelState = nextChannelState
-      showChannelBalance()
-    })
-  })
-  gamePickSEl.addEventListener('click', function() {
-    disablePickButtons()
-    gameYourPickEl.innerText = icon('s')
-    const nextChannelState = getChannelStateForNextRound()
-    state.channel.signState(nextChannelState).then(function(signature) {
-      state.wsServer.send(JSON.stringify(
-        { command: 'pick'
-        , pick: 's'
-        // , nextChannelState: serializeChannelState(nextChannelState)
-        , signature: serialize(signature)
-        }
-      ))
-      state.channelState = nextChannelState
-      showChannelBalance()
-    })
+    const closingChannelPaneEl = findOne('#closingChannelPane')
+    showOnlyPane(closingChannelPaneEl)
+    // const data = await state.channel.getData()
+    // console.log('data:', data.balanceA.toString(), data.balanceB.toString(), data.seqnoA.toString(), data.seqnoB.toString(), data.channelId.toString(), data.addressA.toString(true, true, true), data.addressB.toString(true, true, true), data.publicKeyA.toString(), data.publicKeyB.toString())
+    await state.fromWallet.close(
+      { ...state.channelState
+      , hisSignature: deserialize(signature)
+      }
+    ).send(toNano('0.05'))
+    console.log('waiting for channel close...')
+    await waitForChannelClose()
+    console.log('channel closed')
+    setupWebSocket()
+  } else {
+    // console.log('channel state:', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+    console.error('invalid close signature')
+  }
+}
+
+function waitForChannelClose() {
+  return state.channel.getChannelState().then(function (s){
+    if (s === 0) {
+      return
+    } else {
+      return timeout(1000).then(waitForChannelClose)
+    }
+  }).catch(function(e) {
+    console.error('error in waiting for channel to close:', e)
+    return timeout(1000).then(waitForChannelClose)
   })
 }
+
+gamePickREl.addEventListener('click', function() {
+  disablePickButtons()
+  gameYourPickEl.innerText = icon('r')
+  const nextChannelState = getChannelStateForNextRound()
+  state.channel.signState(nextChannelState).then(function(signature) {
+    state.wsServer.send(JSON.stringify(
+      { command: 'pick'
+      , pick: 'r'
+      // , nextChannelState: serializeChannelState(nextChannelState)
+      , signature: serialize(signature)
+      }
+    ))
+    state.channelState = nextChannelState
+    state.picked = true
+    showChannelBalance()
+  })
+})
+
+gamePickPEl.addEventListener('click', function() {
+  disablePickButtons()
+  gameYourPickEl.innerText = icon('p')
+  const nextChannelState = getChannelStateForNextRound()
+  state.channel.signState(nextChannelState).then(function(signature) {
+    state.wsServer.send(JSON.stringify(
+      { command: 'pick'
+      , pick: 'p'
+      // , nextChannelState: serializeChannelState(nextChannelState)
+      , signature: serialize(signature)
+      }
+    ))
+    state.channelState = nextChannelState
+    state.picked = true
+    showChannelBalance()
+  })
+})
+
+gamePickSEl.addEventListener('click', function() {
+  disablePickButtons()
+  gameYourPickEl.innerText = icon('s')
+  const nextChannelState = getChannelStateForNextRound()
+  state.channel.signState(nextChannelState).then(function(signature) {
+    state.wsServer.send(JSON.stringify(
+      { command: 'pick'
+      , pick: 's'
+      // , nextChannelState: serializeChannelState(nextChannelState)
+      , signature: serialize(signature)
+      }
+    ))
+    state.channelState = nextChannelState
+    state.picked = true
+    showChannelBalance()
+  })
+})
 
 function showChannelBalance() {
   const channelBalanceEl = findOne('#channelBalance')
@@ -370,7 +468,6 @@ function showChannelBalance() {
 }
 
 function gamePicked(isA) {
-  const gameTheirPickEl = findOne('#gameTheirPick')
   if (isA != state.isA) {
     gameTheirPickEl.innerText = '☑️'
   }
@@ -378,7 +475,7 @@ function gamePicked(isA) {
 
 function gameDraw(pick) {
   state.channelState = getChannelStateForPreviousRound()
-  const gameTheirPickEl = findOne('#gameTheirPick')
+  state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('draw')
   showChannelBalance()
@@ -390,7 +487,7 @@ function gameDraw(pick) {
 
 function gameWon(pick) {
   state.channelState = getChannelStateForWonRound()
-  const gameTheirPickEl = findOne('#gameTheirPick')
+  state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('won')
   showChannelBalance()
@@ -402,7 +499,7 @@ function gameWon(pick) {
 
 function gameLost(pick) {
   state.channelState = getChannelStateForLostRound()
-  const gameTheirPickEl = findOne('#gameTheirPick')
+  state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('lost')
   showChannelBalance()
@@ -577,27 +674,18 @@ function icon(x) {
 }
 
 function disablePickButtons() {
-  const gamePickREl = findOne('#gamePickR')
-  const gamePickPEl = findOne('#gamePickP')
-  const gamePickSEl = findOne('#gamePickS')
   gamePickREl.disabled = true
   gamePickPEl.disabled = true
   gamePickSEl.disabled = true
 }
 
 function enablePickButtons() {
-  const gamePickREl = findOne('#gamePickR')
-  const gamePickPEl = findOne('#gamePickP')
-  const gamePickSEl = findOne('#gamePickS')
   gamePickREl.disabled = false
   gamePickPEl.disabled = false
   gamePickSEl.disabled = false
 }
 
 function showResult(r) {
-  const gameDrawEl = findOne('#gameDraw')
-  const gameWonEl = findOne('#gameWon')
-  const gameLostEl = findOne('#gameLost')
   gameDrawEl.style.display = 'none'
   gameWonEl.style.display = 'none'
   gameLostEl.style.display = 'none'
@@ -611,11 +699,6 @@ function showResult(r) {
 }
 
 function clearResult() {
-  const gameYourPickEl = findOne('#gameYourPick')
-  const gameTheirPickEl = findOne('#gameTheirPick')
-  const gameDrawEl = findOne('#gameDraw')
-  const gameWonEl = findOne('#gameWon')
-  const gameLostEl = findOne('#gameLost')
   gameDrawEl.style.display = 'none'
   gameWonEl.style.display = 'none'
   gameLostEl.style.display = 'none'
@@ -647,6 +730,11 @@ function hideAllPanes() {
   })
 }
 
+function hideLoading() {
+  const mainEl = findOne('body>main')
+  mainEl.classList.remove('loading')
+}
+
 function showOnlyPane(el) {
   hideAllPanes()
   el.style.display = ''
@@ -656,7 +744,7 @@ function showError(msg) {
   const errorViewEl = findOne('#errorMessage')
   errorViewEl.innerText = msg
   errorViewEl.style.visibility = 'visible'
-  setTimeout(hideError, 3000)
+  setTimeout(hideError, 5000)
 }
 
 function hideError() {
