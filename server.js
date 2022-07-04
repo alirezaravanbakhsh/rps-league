@@ -45,16 +45,6 @@ wsServer.on('connection', function(ws) {
     } else {
       console.error('unknown message', msg)
     }
-    // if (msg.command === 'getAddress') {
-    //   ws.send(JSON.stringify({
-    //     event: 'address',
-    //     address: state.address.toString(true, true, true),
-    //     publicKey: TonWeb.utils.bytesToBase64(state.keyPair.publicKey)
-    //   }))
-    // } else if (msg.command === 'initChannel') {
-    //   initChannel(ws, msg)
-    // } else if (msg.command === 'exit') {
-    //   closeChannel(ws, msg)
   })
   ws.on('close', function() {
     dequeue(ws)
