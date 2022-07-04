@@ -153,7 +153,7 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     , seqnoB: new BN(0)
     }
   state.channel = tonweb.payments.createChannel(
-    { channelId: roomId
+    { channelId: 0 //roomId
     , addressA: isA ? state.address : hisAddress
     , addressB: isA ? hisAddress : state.address
     , initBalanceA: state.channelState.balanceA
@@ -348,13 +348,14 @@ async function startGame() {
   gameRoomEl.innerText = state.roomId
 }
 
-gameLeaveEl.addEventListener('click', function() {
+function leaveGame() {
   clearResult()
   disablePickButtons()
   if (state.picked) {
     state.channelState = getChannelStateForPreviousRound()
   }
   state.channelState = getChannelStateForClosing()
+  console.log('closing state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.channel.signClose(state.channelState).then(function(signature) {
     state.wsServer.send(JSON.stringify(
       { command: 'leave'
@@ -370,13 +371,16 @@ gameLeaveEl.addEventListener('click', function() {
       console.log('channel closed')
     }).then(setupWebSocket)
   })
-})
+}
+
+gameLeaveEl.addEventListener('click', leaveGame)
 
 async function gameClose(signature) {
   if (state.picked) {
     state.channelState = getChannelStateForPreviousRound()
   }
   state.channelState = getChannelStateForClosing()
+  console.log('closing state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   const valid = await state.channel.verifyClose(state.channelState, deserialize(signature))
   if (valid) {
     clearResult()
@@ -416,17 +420,16 @@ function waitForChannelClose() {
 gamePickREl.addEventListener('click', function() {
   disablePickButtons()
   gameYourPickEl.innerText = icon('r')
-  const nextChannelState = getChannelStateForNextRound()
-  state.channel.signState(nextChannelState).then(function(signature) {
+  state.picked = true
+  state.channelState = getChannelStateForNextRound()
+  state.channel.signState(state.channelState).then(function(signature) {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 'r'
-      // , nextChannelState: serializeChannelState(nextChannelState)
+      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
-    state.channelState = nextChannelState
-    state.picked = true
     showChannelBalance()
   })
 })
@@ -434,17 +437,16 @@ gamePickREl.addEventListener('click', function() {
 gamePickPEl.addEventListener('click', function() {
   disablePickButtons()
   gameYourPickEl.innerText = icon('p')
-  const nextChannelState = getChannelStateForNextRound()
-  state.channel.signState(nextChannelState).then(function(signature) {
+  state.picked = true
+  state.channelState = getChannelStateForNextRound()
+  state.channel.signState(state.channelState).then(function(signature) {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 'p'
-      // , nextChannelState: serializeChannelState(nextChannelState)
+      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
-    state.channelState = nextChannelState
-    state.picked = true
     showChannelBalance()
   })
 })
@@ -452,17 +454,16 @@ gamePickPEl.addEventListener('click', function() {
 gamePickSEl.addEventListener('click', function() {
   disablePickButtons()
   gameYourPickEl.innerText = icon('s')
-  const nextChannelState = getChannelStateForNextRound()
-  state.channel.signState(nextChannelState).then(function(signature) {
+  state.picked = true
+  state.channelState = getChannelStateForNextRound()
+  state.channel.signState(state.channelState).then(function(signature) {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 's'
-      // , nextChannelState: serializeChannelState(nextChannelState)
+      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
-    state.channelState = nextChannelState
-    state.picked = true
     showChannelBalance()
   })
 })
@@ -480,56 +481,59 @@ function gamePicked(isA) {
   }
 }
 
+function nextRound() {
+  if (state.channelState.balanceA.lt(toNano('0.1')) || state.channelState.balanceB.lt(toNano('0.1'))) {
+    leaveGame()
+    return
+  }
+  clearResult()
+  enablePickButtons()
+}
+
 function gameDraw(pick) {
   state.channelState = getChannelStateForPreviousRound()
+  console.log('draw state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('draw')
   showChannelBalance()
-  setTimeout(function() {
-    clearResult()
-    enablePickButtons()
-  }, 2000)
+  setTimeout(nextRound, 2000)
 }
 
 function gameWon(pick) {
   state.channelState = getChannelStateForWonRound()
+  console.log('won state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('won')
   showChannelBalance()
-  setTimeout(function() {
-    clearResult()
-    enablePickButtons()
-  }, 2000)
+  setTimeout(nextRound, 2000)
 }
 
 function gameLost(pick) {
   state.channelState = getChannelStateForLostRound()
+  console.log('lost state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('lost')
   showChannelBalance()
-  setTimeout(function() {
-    clearResult()
-    enablePickButtons()
-  }, 2000)
+  setTimeout(nextRound, 2000)
 }
 
 function getChannelStateForNextRound() {
   if (state.isA) {
     return (
       { balanceA: state.channelState.balanceA.sub(toNano('0.1'))
-      , balanceB: state.channelState.balanceB
+      , balanceB: state.channelState.balanceB.sub(toNano('0.1'))
       , seqnoA: state.channelState.seqnoA.add(new BN('1'))
-      , seqnoB: state.channelState.seqnoB
+      , seqnoB: state.channelState.seqnoB.add(new BN('1'))
       }
     )
   } else {
     return (
-      { balanceA: state.channelState.balanceA
+      { balanceA: state.channelState.balanceA.sub(toNano('0.1'))
       , balanceB: state.channelState.balanceB.sub(toNano('0.1'))
-      , seqnoA: state.channelState.seqnoA
+      , seqnoA: state.channelState.seqnoA.add(new BN('1'))
       , seqnoB: state.channelState.seqnoB.add(new BN('1'))
       }
     )
@@ -540,16 +544,16 @@ function getChannelStateForPreviousRound() {
   if (state.isA) {
     return (
       { balanceA: state.channelState.balanceA.add(toNano('0.1'))
-      , balanceB: state.channelState.balanceB
+      , balanceB: state.channelState.balanceB.add(toNano('0.1'))
       , seqnoA: state.channelState.seqnoA.sub(new BN('1'))
-      , seqnoB: state.channelState.seqnoB
+      , seqnoB: state.channelState.seqnoB.sub(new BN('1'))
       }
     )
   } else {
     return (
-      { balanceA: state.channelState.balanceA
+      { balanceA: state.channelState.balanceA.add(toNano('0.1'))
       , balanceB: state.channelState.balanceB.add(toNano('0.1'))
-      , seqnoA: state.channelState.seqnoA
+      , seqnoA: state.channelState.seqnoA.sub(new BN('1'))
       , seqnoB: state.channelState.seqnoB.sub(new BN('1'))
       }
     )
@@ -560,14 +564,14 @@ function getChannelStateForWonRound() {
   if (state.isA) {
     return (
       { balanceA: state.channelState.balanceA.add(toNano('0.2'))
-      , balanceB: state.channelState.balanceB.sub(toNano('0.1'))
+      , balanceB: state.channelState.balanceB
       , seqnoA: state.channelState.seqnoA.add(new BN('1'))
       , seqnoB: state.channelState.seqnoB.add(new BN('1'))
       }
     )
   } else {
     return (
-      { balanceA: state.channelState.balanceA.sub(toNano('0.1'))
+      { balanceA: state.channelState.balanceA
       , balanceB: state.channelState.balanceB.add(toNano('0.2'))
       , seqnoA: state.channelState.seqnoA.add(new BN('1'))
       , seqnoB: state.channelState.seqnoB.add(new BN('1'))
@@ -605,72 +609,6 @@ function getChannelStateForClosing() {
     }
   )
 }
-
-// gamePickREl.addEventListener('click', function() {
-//   disablePickButtons()
-//   gameYourPickEl.innerText = icon('r')
-//   const nextChannelState = getChannelStateForNextRound()
-//   state.channelB.signState(nextChannelState).then(function(signatureB) {
-//     state.wsServer.send(JSON.stringify({
-//       command: 'pick',
-//       pick: 'r',
-//       nextChannelState: serializeChannelState(nextChannelState),
-//       signatureB: serializeSignature(signatureB)
-//     }))
-//     state.channelState = nextChannelState
-//     showChannelBalance()
-//   })
-// })
-
-// gamePickPEl.addEventListener('click', function() {
-//   disablePickButtons()
-//   gameYourPickEl.innerText = icon('p')
-//   const nextChannelState = getChannelStateForNextRound()
-//   state.channelB.signState(nextChannelState).then(function(signatureB) {
-//     state.wsServer.send(JSON.stringify({
-//       command: 'pick',
-//       pick: 'p',
-//       nextChannelState: serializeChannelState(nextChannelState),
-//       signatureB: serializeSignature(signatureB)
-//     }))
-//     state.channelState = nextChannelState
-//     showChannelBalance()
-//   })
-// })
-
-// gamePickSEl.addEventListener('click', function() {
-//   disablePickButtons()
-//   gameYourPickEl.innerText = icon('s')
-//   const nextChannelState = getChannelStateForNextRound()
-//   state.channelB.signState(nextChannelState).then(function(signatureB) {
-//     state.wsServer.send(JSON.stringify({
-//       command: 'pick',
-//       pick: 's',
-//       nextChannelState: serializeChannelState(nextChannelState),
-//       signatureB: serializeSignature(signatureB)
-//     }))
-//     state.channelState = nextChannelState
-//     showChannelBalance()
-//   })
-// })
-
-// function serializeChannelState(channelState) {
-//   return {
-//     balanceA: channelState.balanceA.toString(),
-//     balanceB: channelState.balanceB.toString(),
-//     seqnoA: channelState.seqnoA.toString(),
-//     seqnoB: channelState.seqnoB.toString()
-//   }
-// }
-
-// function deserializeChannelState(channelState) {
-//   return {
-//     balanceA: new BN(channelState.balanceA),
-//     balanceB: new BN(channelState.balanceB),
-//     seqnoA: new BN(channelState.seqnoA),
-//     seqnoB: new BN(channelState.seqnoB)
-//   }
-// }
 
 function serialize(data) {
   return TonWeb.utils.bytesToBase64(data)
