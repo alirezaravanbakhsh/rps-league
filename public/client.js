@@ -27,7 +27,7 @@ hideAllPanes()
 setupWebSocket()
 
 function setupWebSocket() {
-  const url = 'ws://' + location.host + '/myWebsocket'
+  const url = (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/myWebsocket'
   const wsServer = new WebSocket(url)
   state.wsServer = wsServer
 
