@@ -8,6 +8,18 @@
 
 This project lets users play the popular Rock-Paper-Scissors game with others. They must top-up some TONs (at least 1 TON) to enter the game. On every round, the loser pays 0.1 TON to the winner. The game will end when a player leaves the game, or at least one player loses all his/her top-upped TONs.
 
+The Rock-Paper-Scissors rule is as follows:
+
+| Picks | Result |
+|:--------:|:-----:|
+|Paper 🖐 vs. Rock ✊ | Paper 🖐 wins |
+|Rock ✊ vs. Scissors ✌️ |  Rock ✊ wins |
+|Scissors ✌️ vs. Paper 🖐 | Scissors ✌️ wins|
+|||
+|Rock ✊ vs. Rock ✊ | Draw |
+|Paper 🖐 vs. Paper 🖐 | Draw|
+|Scissors ✌️ vs. Scissors ✌️ |  Draw|
+
 ## How does it work?
 
 The service is run on [testnet](https://testnet.toncenter.com/) and players need to have TONs on this network. The coins can be obtained from [@testgiver_ton_bot](https://t.me/testgiver_ton_bot).
@@ -18,9 +30,7 @@ Technically, the top-up amounts will be transfered on-net to the internal wallet
 
 ## How to install?
 
-Check if you have Nodejs installed on your machine:
-
-Use `node -v` and `npm -v` to see whether they are installed or not.
+Check if you have Nodejs installed on your machine by using `node -v` and `npm -v`.
 
 If they are not installed, install the latest version of Nodejs. You can google it depends on your using OS.
 
@@ -30,7 +40,7 @@ Get the project `git clone git@github.com:alirezaravanbakhsh/rps-league.git`.
 
 In a command line shell, go to the root directory of project, and execute `node server.js`. The service will be run on port 3000 (if not occupied).
 
-In a browser, navigate to `localhost:3000` (reeplace localhost by the server's IP if the server is running on a different machin than running the browser). To play as the different players, you need to do the same on *different devices* or:
+In a browser, navigate to `localhost:3000` (reeplace localhost by the server's IP if the server is running on a different machin than running the browser). To play as different players, you need to do the same on *different devices* or:
 
 - using different brands of browser: e.g. chrome, firefox, safari
 - using incognito mode of browser (if it supports)
