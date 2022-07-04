@@ -65,11 +65,12 @@ function queue(ws, msg) {
   ws.address = msg.address
   ws.publicKey = msg.publicKey
   state.joinList = state.joinList.filter(function(entry) {
-    if (entry.address !== ws.address) {
-      return true
-    } else {
-      entry.close()
+    if (entry === ws) {
       return false
+    } else if (entry.address === ws.address) {
+      return false
+    } else {
+      return true
     }
   })
   state.joinList.push(ws)
@@ -219,22 +220,20 @@ async function checkRound(room) {
 
 function leaveRoom(ws, msg) {
   const roomId = ws.roomId
-  if (roomId != null) {
-    const room = state.roomDict[roomId]
-    if (room) {
-      state.roomDict[roomId] = null
-      room.playerA.roomId = null
-      room.playerB.roomId = null
-      const newMsg = JSON.stringify(
-        { event: 'left'
-        , signature: msg.signature
-        }
-      )
-      if (ws === room.playerA) {
-        room.playerB.send(newMsg)
-      } else {
-        room.playerA.send(newMsg)
+  const room = state.roomDict[roomId]
+  if (room) {
+    state.roomDict[roomId] = null
+    room.playerA.roomId = null
+    room.playerB.roomId = null
+    const newMsg = JSON.stringify(
+      { event: 'left'
+      , signature: msg.signature
       }
+    )
+    if (ws === room.playerA) {
+      room.playerB.send(newMsg)
+    } else {
+      room.playerA.send(newMsg)
     }
   }
 }
