@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "express": "^4.18.1",
+    "forever": "^4.0.3",
     "tonweb": "^0.0.50",
     "ws": "^8.8.0"
   }
