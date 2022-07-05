@@ -79,8 +79,8 @@ function joinPlayers() {
     const room =
       { playerA: state.joinList.pop()
       , playerB: state.joinList.pop()
-      // , pickA: null
-      // , pickB: null
+      , pickA: null
+      , pickB: null
       }
     state.nextRoomId += 1
     const roomId = state.nextRoomId
@@ -107,24 +107,6 @@ function joinPlayers() {
 }
 
 async function checkPick(ws, msg) {
-  // const nextChannelState = deserializeChannelState(msg.nextChannelState)
-  // const signature = deserialize(msg.signature)
-  // if (nextChannelState.balanceA.toString() != ws.channelState.balanceA.toString()) {
-  //   return console.log('balanceA mismatch')
-  // }
-  // if (nextChannelState.balanceB.toString() != ws.channelState.balanceB.sub(toNano('0.1')).toString()) {
-  //   return console.log('balanceB not subtracted by 0.1')
-  // }
-  // if (nextChannelState.seqnoA.toString() != ws.channelState.seqnoA.toString()) {
-  //   return console.log('seqnoA mismatch')
-  // }
-  // if (nextChannelState.seqnoB.toString() != ws.channelState.seqnoB.add(new BN('1')).toString()) {
-  //   return console.log('seqnoB not added by 1')
-  // }
-  // if (!(await ws.channelA.verifyState(nextChannelState, signatureB))) {
-  //   return console.log('signatureB is invalid')
-  // }
-  // ws.channelState = nextChannelState
   const pick = msg.pick
   const roomId = ws.roomId
   const room = state.roomDict[roomId]
@@ -132,11 +114,9 @@ async function checkPick(ws, msg) {
   if (ws === room.playerA) {
     room.pickA = pick
     isA = true
-    // room.signatureB = signature
   } else {
     room.pickB = pick
     isA = false
-    // room.signatureA = signature
   }
   const newMsg = JSON.stringify({
     event: 'picked',
@@ -154,32 +134,20 @@ async function checkRound(room) {
     await timeout(1000)
     const result = rpsCheckRule(a, b)
     if (result === 0) {
-      // giveBack(room.playerA)
-      // giveBack(room.playerB)
-      // const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
-      // const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
       room.playerA.send(JSON.stringify(
         { event: 'draw'
         , pick: room.pickB
-        // , channelState: serializeChannelState(room.playerA.channelState)
-        // , signatureA: serializeSignature(signaturePlayerA)
         }
       ))
       room.playerB.send(JSON.stringify(
         { event: 'draw'
         , pick: room.pickA
-        // , channelState: serializeChannelState(room.playerB.channelState)
-        // , signatureA: serializeSignature(signaturePlayerB)
         }
       ))
     } else if (result === 1) {
-      // giveBack(room.playerA)
-      // giveBack(room.playerA)
-      // const signaturePlayerA = await room.playerA.channelA.signState(room.playerA.channelState)
       room.playerA.send(JSON.stringify(
         { event: 'won'
         , pick: room.pickB
-        // , signature: serialize(signatureB)
         }
       ))
       room.playerB.send(JSON.stringify(
@@ -188,9 +156,6 @@ async function checkRound(room) {
         }
       ))
     } else if (result === 2) {
-      // giveBack(room.playerB)
-      // giveBack(room.playerB)
-      // const signaturePlayerB = await room.playerB.channelA.signState(room.playerB.channelState)
       room.playerA.send(JSON.stringify(
         { event: 'lost'
         , pick: room.pickB
@@ -199,7 +164,6 @@ async function checkRound(room) {
       room.playerB.send(JSON.stringify(
         { event: 'won'
         , pick: room.pickA
-        // , signaturA: serialize(signature)
         }
       ))
     }
@@ -228,16 +192,6 @@ function leaveRoom(ws, msg) {
   }
 }
 
-// function giveBack(ws) {
-//   const nextChannelState = {
-//     balanceA: ws.channelState.balanceA.sub(toNano('0.1')),
-//     balanceB: ws.channelState.balanceB.add(toNano('0.1')),
-//     seqnoA: ws.channelState.seqnoA.add(new BN('1')),
-//     seqnoB: ws.channelState.seqnoB
-//   }
-//   ws.channelState = nextChannelState
-// }
-
 function rpsCheckRule(a, b) {
   if (a === 'r' && b === 'p') {
     return 2
@@ -255,115 +209,6 @@ function rpsCheckRule(a, b) {
     return 0
   }
 }
-
-// function initChannel(ws, msg) {
-//   const channelInitState = {
-//     balanceA: new BN(msg.balanceA),
-//     balanceB: new BN(msg.balanceB),
-//     seqnoA: new BN(0),
-//     seqnoB: new BN(0)
-//   }
-//   const channelConfig = {
-//     channelId: new BN(msg.channelId),
-//     addressA: state.address,
-//     addressB: new TonWeb.utils.Address(msg.addressB),
-//     initBalanceA: channelInitState.balanceA,
-//     initBalanceB: channelInitState.balanceB
-//   }
-//   const channelA = tonweb.payments.createChannel({
-//     ...channelConfig,
-//     isA: true,
-//     myKeyPair: state.keyPair,
-//     hisPublicKey: TonWeb.utils.base64ToBytes(msg.publicKeyB)
-//   })
-//   const fromWalletA = channelA.fromWallet({
-//     wallet: state.wallet,
-//     secretKey: state.keyPair.secretKey
-//   })
-//   const checkBalanceA = function() {
-//     return channelA.getData().then(function(data) {
-//       if (data.balanceA.toString() !== '0') {
-//         return
-//       } else {
-//         return timeout(1000).then(checkBalanceA)
-//       }
-//     })
-//   }
-//   fromWalletA
-//   .topUp({coinsA: channelInitState.balanceA, coinsB: new BN(0)})
-//   .send(channelInitState.balanceA.add(toNano('0.05')))
-//   .then(checkBalanceA)
-//   .then(function() {
-//     return fromWalletA.init(channelInitState).send(toNano('0.05'))
-//   })
-//   .then(function() {
-//     ws.channelState = channelInitState
-//     ws.addressB = channelConfig.addressB
-//     ws.channelA = channelA
-//     ws.fromWalletA = fromWalletA
-//     ws.send(JSON.stringify({event: 'channelInitialized'}))
-//   })
-//   .catch(function(e) {
-//     console.log('error in initializing channel: %s', e)
-//     ws.send(JSON.stringify({event: 'error', text: 'error in initializing channel'}))
-//   })
-// }
-
-// async function closeChannel(ws, msg) {
-//   const signatureCloseB = deserializeSignature(msg.signatureCloseB)
-//   const valid = await ws.channelA.verifyClose(ws.channelState, signatureCloseB)
-//   if (!valid) {
-//     ws.send(JSON.stringify({event: 'error', text: 'Cannot verify close signature'}))
-//   } else {
-//     const waitForClosure = function() {
-//       return ws.channelA.getChannelState().then(function(state){
-//         console.log('close state: %s', state)
-//         if (state === 0) {
-//           return
-//         } else {
-//           return timeout(1000).then(waitForClosure)
-//         }
-//       })
-//     }
-//     ws.fromWalletA.close({
-//       ...ws.channelState,
-//       hisSignature: signatureCloseB
-//     }).send(toNano('0.05'))
-//     .then(waitForClosure)
-//     .then(function() {
-//       ws.send(JSON.stringify({event: 'closed'}))
-//     })
-//     .catch(function(e) {
-//       console.log('error in closing channel: %s', e)
-//     })
-//   }
-// }
-
-// function serializeChannelState(channelState) {
-//   return {
-//     balanceA: channelState.balanceA.toString(),
-//     balanceB: channelState.balanceB.toString(),
-//     seqnoA: channelState.seqnoA.toString(),
-//     seqnoB: channelState.seqnoB.toString()
-//   }
-// }
-
-// function deserializeChannelState(channelState) {
-//   return {
-//     balanceA: new BN(channelState.balanceA),
-//     balanceB: new BN(channelState.balanceB),
-//     seqnoA: new BN(channelState.seqnoA),
-//     seqnoB: new BN(channelState.seqnoB)
-//   }
-// }
-
-// function serialize(data) {
-//   return TonWeb.utils.bytesToBase64(data)
-// }
-
-// function deserialize(data) {
-//   return TonWeb.utils.base64ToBytes(data)
-// }
 
 // Utility
 

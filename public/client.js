@@ -47,7 +47,6 @@ function setupWebSocket() {
 
   wsServer.onopen = function() {
     setupWallet()
-    // wsServer.send(JSON.stringify({command: 'getAddress'}))
   }
 
   wsServer.onmessage = function(m) {
@@ -67,20 +66,12 @@ function setupWebSocket() {
     } else if (msg.event === 'draw') {
       gameDraw(msg.pick)
     } else if (msg.event === 'won') {
-      // state.channelState = deserializeChannelState(msg.channelState)
       gameWon(msg.pick)
     } else if (msg.event === 'lost') {
       gameLost(msg.pick)
     } else {
       console.error('unknown message:', msg)
     }
-    // } else if (msg.event === 'address') {
-    //   setupWallet(msg.address, msg.publicKey)
-    // } else if (msg.event === 'channelInitialized') {
-    //   checkInitialized()
-    // } else if (msg.event === 'closed') {
-    //   wsServer.send(JSON.stringify({command: 'getAddress'}))
-    // }
   }
 }
 
@@ -106,7 +97,7 @@ async function setupWallet() {
 }
 
 async function refreshBalance() {
-  balance = await tonweb.getBalance(state.address)
+  balance = await getBalance(state.address)
   state.balance = new BN(balance)
   const walletBalanceEl = findOne('#walletBalance')
   walletBalanceEl.innerText = fromNano(state.balance)
@@ -117,6 +108,7 @@ const playNowEl = findOne('#playNow')
 playNowEl.addEventListener('click', function() {
   hideError()
   if (state.balance.gte(toNano('1.5'))) {
+    console.log('start playing with wallet balance of', fromNano(state.balance))
     state.wsServer.send(JSON.stringify(
       { command: 'join'
       , address: state.address.toString(true, true, true)
@@ -152,8 +144,12 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     , seqnoA: new BN(0)
     , seqnoB: new BN(0)
     }
+  // For channelId, roomId can also be used to make them more likely to be created on each game.
+  // However, while developing, you may make mistakes and the balance may lock-up in the channel.
+  // By using a fixed channel id, every time it will be used, and when the mistake is fixed,
+  // balance will be usable again.
   state.channel = tonweb.payments.createChannel(
-    { channelId: 0 //roomId
+    { channelId: 0
     , addressA: isA ? state.address : hisAddress
     , addressB: isA ? hisAddress : state.address
     , initBalanceA: state.channelState.balanceA
@@ -171,27 +167,27 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
   const channelAddress = await state.channel.getAddress()
   console.log('channel address:', channelAddress.toString(true, true, true))
   try {
-    const s = await state.channel.getChannelState()
+    const s = await getChannelState()
     console.log('skipping creation')
   } catch (e) {
     console.log('waiting for channel creation...')
     if (isA) {
-      await state.fromWallet.deploy().send(toNano('0.05'))
+      await deployChannel()
     }
     const waitForChannelCreation = function() {
-      return state.channel.getChannelState().then(function(s) {
+      return getChannelState().then(function(s) {
         if (s === 0) {
           return
         } else {
-          return timeout(2000).then(waitForChannelCreation)
+          return timeout(1000).then(waitForChannelCreation)
         }
       }).catch(function() {
-        return timeout(2000).then(waitForChannelCreation)
+        return timeout(1000).then(waitForChannelCreation)
       })
     }
     await waitForChannelCreation()
   }
-  const data = await state.channel.getData()
+  const data = await getData()
   state.channelState.seqnoA = data.seqnoA
   state.channelState.seqnoB = data.seqnoB
   const topUpPaneEl = findOne('#topUpPane')
@@ -202,15 +198,12 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
       .topUp({coinsA: state.channelState.balanceA.sub(data.balanceA), coinsB: new BN(0)})
       .send(state.channelState.balanceA.sub(data.balanceA).add(toNano('0.05')))
     const waitForTopUpA = function() {
-      return state.channel.getData().then(function(data) {
+      return getData().then(function(data) {
         if (state.channelState.balanceA.sub(data.balanceA).eq(new BN('0'))) {
           return
         } else {
-          return timeout(2000).then(waitForTopUpA)
+          return timeout(1000).then(waitForTopUpA)
         }
-      }).catch(function(e) {
-        console.error('error in waiting for top-up:', e)
-        return timeout(2000).then(waitForTopUpA)
       })
     }
     await waitForTopUpA()
@@ -220,15 +213,12 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
       .topUp({coinsA: new BN(0), coinsB: state.channelState.balanceB.sub(data.balanceB)})
       .send(state.channelState.balanceB.sub(data.balanceB).add(toNano('0.05')))
     const waitForTopUpB = function() {
-      return state.channel.getData().then(function(data) {
+      return getData().then(function(data) {
         if (state.channelState.balanceB.sub(data.balanceB).eq(new BN('0'))) {
           return
         } else {
-          return timeout(2000).then(waitForTopUpB)
+          return timeout(1000).then(waitForTopUpB)
         }
-      }).catch(function(e) {
-        console.error('error in waiting for top-up:', e)
-        return timeout(2000).then(waitForTopUpB)
       })
     }
     await waitForTopUpB()
@@ -238,23 +228,20 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
   const initializingChannelPaneEl = findOne('#initializingChannelPane')
   showOnlyPane(initializingChannelPaneEl)
   const waitForChannelInit = function() {
-    return state.channel.getChannelState().then(function(s) {
+    return getChannelState().then(function(s) {
       if (s === 1) {
         return
       } else {
-        return timeout(2000).then(waitForChannelInit)
+        return timeout(1000).then(waitForChannelInit)
       }
-    }).catch(function(e) {
-      console.error('error in waiting for init:', e)
-      return timeout(2000).then(waitForChannelInit)
     })
   }
-  const s = await state.channel.getChannelState()
+  const s = await getChannelState()
   if (s === 1) {
     console.log('skipping init')
   } else {
     if (!isA) {
-      await state.fromWallet.init(state.channelState).send(toNano('0.05'))
+      await initChannel()
     }
     console.log('waiting for channel init...')
     await waitForChannelInit()
@@ -267,67 +254,7 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
     , seqnoB: state.channelState.seqnoB.add(new BN('1'))
     }
   startGame()
-  // state.wsServer.send(JSON.stringify({
-  //   command: 'initChannel',
-  //   balanceA: state.channelState.balanceA.toString(),
-  //   balanceB: state.channelState.balanceB.toString(),
-  //   channelId: channelConfig.channelId.toString(),
-  //   addressB: state.addressB.toString(true, true, true),
-  //   publicKeyB: TonWeb.utils.bytesToBase64(state.keyPair.publicKey)
-  // }))
-  // waitForInit()
 }
-
-// async function waitForInit() {
-//   showOnlyPane(initChannelViewEl)
-// }
-
-// async function checkInitialized() {
-//   const data = await state.channelB.getData()
-//   console.log(data)
-//   console.log('balanceA: %s', data.balanceA.toString())
-//   console.log('balanceB: %s', data.balanceB.toString())
-//   x = await state.fromWalletB.init(state.state.channelState).send(toNano('0.05'))
-//   console.log('x: %o', x)
-//   let i = 30
-//   while (i > 0) {
-//     i -= 1
-//     try {
-//       const channelState = await state.channelB.getChannelState()
-//       console.log('channel state: %s', channelState)
-//       if (channelState !== 0) {
-//         break
-//       }
-//     } catch (e) {
-//     }
-//     await timeout(1000)
-//   }
-//   showOnlyPane(hallViewEl)
-//   showChannelBalance()
-//   hideError()
-// }
-
-// hallJoinEl.addEventListener('click', function() {
-//   state.wsServer.send(JSON.stringify({command: 'join'}))
-// })
-
-// hallExitEl.addEventListener('click', function() {
-//   state.channelB.signClose(state.channelState)
-//   .then(function(signatureCloseB){
-//     state.wsServer.send(JSON.stringify({
-//       command: 'exit',
-//       signatureCloseB: serializeSignature(signatureCloseB)
-//     }))
-//   })
-// })
-
-// waitLeaveEl.addEventListener('click', function() {
-//   state.wsServer.send(JSON.stringify({command: 'leave'}))
-// })
-
-// gameLeaveEl.addEventListener('click', function() {
-//   state.wsServer.send(JSON.stringify({command: 'leave'}))
-// })
 
 const gamePaneEl = findOne('#gamePane')
 const gameRoomEl = findOne('#gameRoom')
@@ -354,8 +281,7 @@ function leaveGame() {
   if (state.picked) {
     state.channelState = getChannelStateForPreviousRound()
   }
-  state.channelState = getChannelStateForClosing()
-  console.log('closing state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+  console.log('closing state', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.channel.signClose(state.channelState).then(function(signature) {
     state.wsServer.send(JSON.stringify(
       { command: 'leave'
@@ -379,41 +305,33 @@ async function gameClose(signature) {
   if (state.picked) {
     state.channelState = getChannelStateForPreviousRound()
   }
-  state.channelState = getChannelStateForClosing()
-  console.log('closing state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
-  const valid = await state.channel.verifyClose(state.channelState, deserialize(signature))
+  console.log('closing state', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+  const valid = await verifyClose(deserialize(signature))
   if (valid) {
     clearResult()
     disablePickButtons()
     const closingChannelPaneEl = findOne('#closingChannelPane')
     showOnlyPane(closingChannelPaneEl)
-    // const data = await state.channel.getData()
-    // console.log('data:', data.balanceA.toString(), data.balanceB.toString(), data.seqnoA.toString(), data.seqnoB.toString(), data.channelId.toString(), data.addressA.toString(true, true, true), data.addressB.toString(true, true, true), data.publicKeyA.toString(), data.publicKeyB.toString())
-    await state.fromWallet.close(
-      { ...state.channelState
-      , hisSignature: deserialize(signature)
-      }
-    ).send(toNano('0.05'))
+    // const data = await getData()
+    // console.log('data:', fromNano(data.balanceA), fromNano(data.balanceB), data.seqnoA.toString(), data.seqnoB.toString(), data.channelId.toString(), data.addressA.toString(true, true, true), data.addressB.toString(true, true, true), data.publicKeyA.toString(), data.publicKeyB.toString())
+    await closeChannel(deserialize(signature))
     console.log('waiting for channel close...')
     await waitForChannelClose()
     console.log('channel closed')
     setupWebSocket()
   } else {
-    // console.log('channel state:', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+    // console.log('channel state:', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
     console.error('invalid close signature')
   }
 }
 
 function waitForChannelClose() {
-  return state.channel.getChannelState().then(function (s){
+  return getChannelState().then(function (s){
     if (s === 0) {
       return
     } else {
-      return timeout(2000).then(waitForChannelClose)
+      return timeout(1000).then(waitForChannelClose)
     }
-  }).catch(function(e) {
-    console.error('error in waiting for channel to close:', e)
-    return timeout(2000).then(waitForChannelClose)
   })
 }
 
@@ -426,7 +344,6 @@ gamePickREl.addEventListener('click', function() {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 'r'
-      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
@@ -443,7 +360,6 @@ gamePickPEl.addEventListener('click', function() {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 'p'
-      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
@@ -460,7 +376,6 @@ gamePickSEl.addEventListener('click', function() {
     state.wsServer.send(JSON.stringify(
       { command: 'pick'
       , pick: 's'
-      // , nextChannelState: serializeChannelState(state.channelState)
       , signature: serialize(signature)
       }
     ))
@@ -492,7 +407,7 @@ function nextRound() {
 
 function gameDraw(pick) {
   state.channelState = getChannelStateForPreviousRound()
-  console.log('draw state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+  console.log('draw state', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('draw')
@@ -502,7 +417,7 @@ function gameDraw(pick) {
 
 function gameWon(pick) {
   state.channelState = getChannelStateForWonRound()
-  console.log('won state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+  console.log('won state', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('won')
@@ -512,7 +427,7 @@ function gameWon(pick) {
 
 function gameLost(pick) {
   state.channelState = getChannelStateForLostRound()
-  console.log('lost state', state.channelState.balanceA.toString(), state.channelState.balanceB.toString(), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
+  console.log('lost state', fromNano(state.channelState.balanceA), fromNano(state.channelState.balanceB), state.channelState.seqnoA.toString(), state.channelState.seqnoB.toString())
   state.picked = false
   gameTheirPickEl.innerText = icon(pick)
   showResult('lost')
@@ -600,16 +515,6 @@ function getChannelStateForLostRound() {
   }
 }
 
-function getChannelStateForClosing() {
-  return (
-    { balanceA: state.channelState.balanceA
-    , balanceB: state.channelState.balanceB
-    , seqnoA: state.channelState.seqnoA.add(new BN('1'))
-    , seqnoB: state.channelState.seqnoB.add(new BN('1'))
-    }
-  )
-}
-
 function serialize(data) {
   return TonWeb.utils.bytesToBase64(data)
 }
@@ -660,6 +565,69 @@ function clearResult() {
   gameYourPickEl.innerText = ''
   gameTheirPickEl.innerText = ''
   enablePickButtons()
+}
+
+function getData() {
+  return state.channel.getData().catch(function(e) {
+    console.log('error in getData:', e)
+    return timeout(1000).then(getData)
+  })
+}
+
+function getChannelState() {
+  return state.channel.getChannelState().catch(function(e) {
+    if (e.toString() === 'Error: http provider parse response error') {
+      throw e
+    } else {
+      console.log('error in getChannelState:', e)
+      return timeout(1000).then(getChannelState)
+    }
+  })
+}
+
+function getBalance(address) {
+  return tonweb.getBalance(address).catch(function(e) {
+    console.log('error in getBalance:', e)
+    return timeout(1000).then(function() {
+      return getBalance(address)
+    })
+  })
+}
+
+function deployChannel() {
+  return state.fromWallet.deploy().send(toNano('0.05')).catch(function(e) {
+    console.log('error in deployChannel:', e)
+    return timeout(1000).then(deployChannel)
+  })
+}
+
+function initChannel() {
+  return state.fromWallet.init(state.channelState).send(toNano('0.05')).catch(function(e) {
+    console.log('error in initChannel:', e)
+    return timeout(1000).then(initChannel)
+  })
+}
+
+function verifyClose(signature) {
+  return state.channel.verifyClose(state.channelState, signature).catch(function(e) {
+    console.log('error in verifyClose:', e)
+    return timeout(1000).then(function() {
+      return verifyClose(signature)
+    })
+  })
+}
+
+function closeChannel(signature) {
+  return state.fromWallet.close(
+    { ...state.channelState
+    , hisSignature: signature
+    }
+  ).send(toNano('0.05')).catch(function (e) {
+    console.log('error in closeChannel:', e)
+    return timeout(1000).then(function() {
+      return closeChannel(signature)
+    })
+  })
 }
 
 // Utility
