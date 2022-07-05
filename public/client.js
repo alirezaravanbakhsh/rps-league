@@ -39,14 +39,15 @@ function setupWebSocket() {
     showError('Error connecting to websocket server.', e)
   }
 
+  wsServer.onopen = function() {
+    setupWallet()
+  }
+
   wsServer.onclose = function() {
+    clearTimeout(state.timer)
     showOnlyPane(connectingPaneEl)
     showError('Connection to websocket closed.')
     timeout(5000).then(setupWebSocket)
-  }
-
-  wsServer.onopen = function() {
-    setupWallet()
   }
 
   wsServer.onmessage = function(m) {
