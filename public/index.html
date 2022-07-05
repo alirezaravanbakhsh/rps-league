@@ -18,36 +18,64 @@
     <p id="errorMessage" style="color: darkred;">&nbsp;</p>
 
     <div id="connectingPane">
-      Connecting...
+      <h3>Connecting...</h3>
     </div>
 
     <div id="walletPane">
-      <p>Wallet Balance: <span id="walletBalance">...</span> TON</p>
+      <h3>Wallet</h3>
+      <p>Balance: <span id="walletBalance">...</span> TON</p>
       <p>Deposit Address:</p>
       <p id="walletAddress" style="font-family: monospace;"></p>
       <button id="playNow">Play Now</button>
+      <button id="walletWithdraw">Withdraw</button>
+    </div>
+
+    <div id="withdrawPane">
+      <h3>Withdraw</h3>
+      <p>
+        Recipient Wallet Address:<br>
+        <input id="withdrawRecipient">
+      </p>
+      <p>
+        Amount:<br>
+        <input id="withdrawAmount" type="number"> TON
+        <button id="withdrawMax">Max</button>
+      </p>
+      <p>
+        Comment:<br>
+        <input id="withdrawComment">
+      </p>
+      <p>
+        <button id="withdrawSend">Send</button>
+        <button id="withdrawBack">Back to Wallet</button>
+      </p>
+    </div>
+
+    <div id="sendSuccessPane">
+      <h3>Withdraw sent to network</h3>
+      <button id="sendSuccessBack">Back to Wallet</button>
     </div>
 
     <div id="waitPane">
       <h3>Waiting for Another Player</h3>
-      <button id="waitLeave">Leave Game</button>
+      <button id="waitLeave">Back to Wallet</button>
     </div>
 
     <div id="createChannelPane">
-      Creating Payment Channel...
+      <h3>Creating Payment Channel...</h3>
     </div>
 
     <div id="topUpPane">
-      Waiting for top-up of both players...
+      <h3>Waiting for Top-Up...</h3>
     </div>
 
     <div id="initializingChannelPane">
-      Initializing...
+      <h3>Initializing...</h3>
     </div>
 
     <div id="gamePane">
-      <h3>Room <span id="gameRoom"></span></h3>
-      <p>Channel Balance: <span id="channelBalance"></span> TON</p>
+      <h3>Play</h3>
+      <p>Your Game Balance: <span id="channelBalance"></span> TON</p>
       <button id="gameLeave">Leave Game</button>
       <p></p>
       <button id="gamePickR">Rock ✊</button>
@@ -61,7 +89,7 @@
     </div>
 
     <div id="closingChannelPane">
-      Closing Channel...
+      <h3>Closing Channel...</h3>
     </div>
 
   </main>

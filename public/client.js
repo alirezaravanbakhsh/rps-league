@@ -44,7 +44,7 @@ function setupWebSocket() {
   }
 
   wsServer.onclose = function() {
-    clearTimeout(state.timer)
+    closeWalletPane()
     showOnlyPane(connectingPaneEl)
     showError('Connection to websocket closed.')
     timeout(5000).then(setupWebSocket)
@@ -92,9 +92,17 @@ async function setupWallet() {
   }
   const walletAddressEl = findOne('#walletAddress')
   walletAddressEl.innerText = state.address.toString(true, true, true)
+  showWalletPane()
+}
+
+function showWalletPane() {
   const walletPaneEl = findOne('#walletPane')
   showOnlyPane(walletPaneEl)
   refreshBalance()
+}
+
+function closeWalletPane() {
+  clearTimeout(state.timer)
 }
 
 async function refreshBalance() {
@@ -102,7 +110,6 @@ async function refreshBalance() {
   state.balance = new BN(balance)
   const walletBalanceEl = findOne('#walletBalance')
   walletBalanceEl.innerText = fromNano(state.balance)
-  clearTimeout(state.timer)
   state.timer = setTimeout(refreshBalance, 2000)
 }
 
@@ -122,8 +129,113 @@ playNowEl.addEventListener('click', function() {
   }
 })
 
+const walletWithdrawEl = findOne('#walletWithdraw')
+
+walletWithdrawEl.addEventListener('click', showWithdrawPane)
+
+function showWithdrawPane() {
+  closeWalletPane()
+  const withdrawPaneEl = findOne('#withdrawPane')
+  showOnlyPane(withdrawPaneEl)
+}
+
+const withdrawMaxEl = findOne('#withdrawMax')
+
+withdrawMaxEl.addEventListener('click', setAmountToMax)
+
+async function setAmountToMax() {
+  const withdrawRecipientEl = findOne('#withdrawRecipient')
+  const withdrawAmountEl = findOne('#withdrawAmount')
+  const withdrawCommentEl = findOne('#withdrawComment')
+  const address = withdrawRecipientEl.value
+  const amount = withdrawAmountEl.value
+  const comment = withdrawCommentEl.value
+  const transfer = await createTransfer(address, amount, comment)
+  const maxAmount = await getMaxWithdrawable(transfer)
+  withdrawAmountEl.value = maxAmount
+}
+
+const withdrawSendEl = findOne('#withdrawSend')
+
+withdrawSendEl.addEventListener('click', send)
+
+async function send() {
+  hideError()
+  const withdrawRecipientEl = findOne('#withdrawRecipient')
+  const withdrawAmountEl = findOne('#withdrawAmount')
+  const withdrawCommentEl = findOne('#withdrawComment')
+  const address = withdrawRecipientEl.value
+  const amount = withdrawAmountEl.value
+  const comment = withdrawCommentEl.value
+  withdrawRecipientEl.disabled = true
+  withdrawAmountEl.disabled = true
+  withdrawCommentEl.disabled = true
+  withdrawSendEl.disabled = true
+  try {
+    const transfer = await createTransfer(address, amount, comment)
+    const maxAmount = await getMaxWithdrawable(transfer)
+    if (toNano(amount).lte(new BN('0'))) {
+      showError('Amount must be greater than zero')
+    } else if (toNano(amount).gt(toNano(maxAmount))) {
+      showError('Amount must be less than ' + maxAmount.toString())
+    } else {
+      transfer.send()
+      clearWithdraw()
+      showSendSuccess()
+    }
+  } catch (e) {
+    console.log('withdraw error:', e)
+    showError('Withdraw error: ' + e)
+  } finally {
+    withdrawRecipientEl.disabled = false
+    withdrawAmountEl.disabled = false
+    withdrawCommentEl.disabled = false
+    withdrawSendEl.disabled = false
+  }
+}
+
+async function createTransfer(address, amount, comment) {
+  const seqno = await state.wallet.methods.seqno().call()
+  return state.wallet.methods.transfer(
+    { secretKey: state.keyPair.secretKey
+    , toAddress: address || state.address
+    , amount: toNano(amount || '0')
+    , seqno: seqno
+    , payload: comment
+    , sendMode: 3
+    }
+  )
+}
+
+async function getMaxWithdrawable(transfer) {
+  // const estimateFee = await transfer.estimateFee()
+  return fromNano(BN.max(toNano('0'), state.balance.sub(toNano('0.05'))))
+}
+
+function clearWithdraw() {
+  const withdrawRecipientEl = findOne('#withdrawRecipient')
+  const withdrawAmountEl = findOne('#withdrawAmount')
+  const withdrawCommentEl = findOne('#withdrawComment')
+  withdrawRecipientEl.value = ''
+  withdrawAmountEl.value = ''
+  withdrawCommentEl.value = ''
+}
+
+function showSendSuccess() {
+  const sendSuccessPaneEl = findOne('#sendSuccessPane')
+  showOnlyPane(sendSuccessPaneEl)
+}
+
+const withdrawBackEl = findOne('#withdrawBack')
+
+withdrawBackEl.addEventListener('click', showWalletPane)
+
+const sendSuccessBackEl = findOne('#sendSuccessBack')
+
+sendSuccessBackEl.addEventListener('click', showWalletPane)
+
 function showWaitRoomPane() {
-  clearTimeout(state.timer)
+  closeWalletPane()
   const waitPaneEl = findOne('#waitPane')
   showOnlyPane(waitPaneEl)
 }
@@ -259,7 +371,6 @@ async function setupChannel(roomId, isA, hisAddress, hisPublicKey) {
 }
 
 const gamePaneEl = findOne('#gamePane')
-const gameRoomEl = findOne('#gameRoom')
 const gameLeaveEl = findOne('#gameLeave')
 const gamePickREl = findOne('#gamePickR')
 const gamePickPEl = findOne('#gamePickP')
@@ -274,7 +385,6 @@ async function startGame() {
   showOnlyPane(gamePaneEl)
   clearResult()
   showChannelBalance()
-  gameRoomEl.innerText = state.roomId
 }
 
 function leaveGame() {
