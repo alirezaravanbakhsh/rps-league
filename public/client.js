@@ -101,13 +101,14 @@ async function refreshBalance() {
   state.balance = new BN(balance)
   const walletBalanceEl = findOne('#walletBalance')
   walletBalanceEl.innerText = fromNano(state.balance)
+  clearTimeout(state.timer)
   state.timer = setTimeout(refreshBalance, 2000)
 }
 
 const playNowEl = findOne('#playNow')
 playNowEl.addEventListener('click', function() {
   hideError()
-  if (state.balance.gte(toNano('1.5'))) {
+  if (state.balance.gte(toNano('2'))) {
     console.log('start playing with wallet balance of', fromNano(state.balance))
     state.wsServer.send(JSON.stringify(
       { command: 'join'
